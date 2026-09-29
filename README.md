@@ -23,22 +23,34 @@ npm run ios
 
 `npm run ios` needs macOS. On Windows or Linux, use Expo Go for a quick look, or build in the cloud.
 
-## Export to Android and iOS
+## Deploy
 
-Expo is the interpreter and the native build path. You do not rewrite the app for each store.
+One Expo project ships the website, the Android app, and the iOS app. Cloud builds do not need a Mac.
+
+Do this once:
 
 ```bash
 npx eas-cli@latest login
 npx eas-cli@latest init
-npx eas-cli@latest build --platform android --profile preview
-npx eas-cli@latest build --platform ios --profile preview
+npx eas-cli@latest credentials:configure-build -p android -e production
+npx eas-cli@latest credentials:configure-build -p ios -e production
 ```
 
-`preview` produces an installable Android APK and an iOS build you can put on TestFlight. `production` is the store profile. Store builds need an Apple Developer account and a Google Play account. Face ID is limited inside Expo Go; use a development or store build to bind the vault key to biometrics in the device keychain.
+`eas init` links this repo to an Expo project. The credential commands create the Android keystore and the iOS distribution certificate. iOS needs an Apple Developer account. Play Store submission needs a Google Play account.
+
+Then deploy all three:
 
 ```bash
-npx eas-cli@latest build --profile development --platform android
+npm run deploy
 ```
+
+That publishes the website on [EAS Hosting](https://docs.expo.dev/eas/hosting/workflows/) and starts production Android and iOS builds. Install those builds from the Expo dashboard. `npm run deploy:preview` does the same with an installable Android APK, an internal iOS build, and a preview website.
+
+`npm run release` deploys the website and submits the store builds to Google Play and App Store Connect. Store submission needs the [Play CI/CD setup](https://docs.expo.dev/submit/android/) and the [App Store CI/CD setup](https://docs.expo.dev/submit/ios/) completed once.
+
+From GitHub, open Actions, choose Deploy, and run it. Add an [Expo access token](https://expo.dev/settings/access-tokens) as the repository secret `EXPO_TOKEN` first. The web job also saves the static site as an artifact. `npm run export:web` writes that same site to `dist/` if you want to host it somewhere else.
+
+Face ID is limited inside Expo Go. A preview, development, or store build binds the vault key to biometrics in the device keychain.
 
 ## Checks
 

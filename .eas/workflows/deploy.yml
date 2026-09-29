@@ -1,0 +1,22 @@
+name: Deploy all platforms
+
+jobs:
+  build_android:
+    name: Android
+    type: build
+    params:
+      platform: android
+      profile: production
+
+  build_ios:
+    name: iOS
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  deploy_web:
+    name: Web
+    type: deploy
+    params:
+      prod: true

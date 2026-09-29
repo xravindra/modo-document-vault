@@ -1,0 +1,20 @@
+name: Preview all platforms
+
+jobs:
+  build_android:
+    name: Android
+    type: build
+    params:
+      platform: android
+      profile: preview
+
+  build_ios:
+    name: iOS
+    type: build
+    params:
+      platform: ios
+      profile: preview
+
+  deploy_web:
+    name: Web
+    type: deploy

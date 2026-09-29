@@ -1,6 +1,6 @@
 import { extractImageText } from './extractImage';
 import { inferKind, parseFields } from './fields';
-import { extractPdfText } from './pdfText';
+import { extractPdfText, presentableText } from './pdfText';
 import type { DocKind, Extraction } from './types';
 
 export async function extractDocument(bytes: Uint8Array, mime: string, fileName: string): Promise<Extraction> {
@@ -32,10 +32,18 @@ export async function extractDocument(bytes: Uint8Array, mime: string, fileName:
     note = 'Read the text file directly, then sealed the original.';
   }
 
+  const readable = presentableText(text);
+  if (!readable && (engine === 'pdf-text' || engine === 'ocr' || engine === 'text')) {
+    engine = 'metadata';
+    note = isPdf
+      ? 'This PDF has no readable text layer. A scan can be added as a photo in the web app for recognition.'
+      : 'The original file is stored. No readable text was found.';
+  }
+
   return {
     engine,
-    text: text.trim(),
-    fields: parseFields(text),
+    text: readable,
+    fields: parseFields(readable),
     note,
   };
 }

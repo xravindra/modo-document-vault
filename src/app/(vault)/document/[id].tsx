@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { PdfFrame } from '@/components/PdfFrame';
@@ -20,6 +20,8 @@ export default function DocumentScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [plain, setPlain] = useState<Uint8Array | null>(null);
   const [mime, setMime] = useState('');
+  const [armed, setArmed] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -64,18 +66,17 @@ export default function DocumentScreen() {
     }
   }
 
-  function remove() {
-    if (!doc) return;
-    Alert.alert('Remove this document?', `${doc.title} will be deleted from this device.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => {
-          void vault.removeDocument(doc.id).then(() => router.back());
-        },
-      },
-    ]);
+  async function remove() {
+    if (!doc || removing) return;
+    setRemoving(true);
+    setMessage(null);
+    try {
+      await vault.removeDocument(doc.id);
+      router.back();
+    } catch (error) {
+      setRemoving(false);
+      setMessage(error instanceof Error ? error.message : 'Could not delete this document.');
+    }
   }
 
   if (!doc) {
@@ -117,12 +118,6 @@ export default function DocumentScreen() {
           <Text style={styles.fieldValue}>{field.value}</Text>
         </View>
       ))}
-      {doc.extraction.text ? (
-        <View style={styles.textBlock}>
-          <Text style={styles.fieldLabel}>Extracted text</Text>
-          <Text style={styles.text}>{doc.extraction.text}</Text>
-        </View>
-      ) : null}
       <View style={styles.actions}>
         <PressableScale onPress={() => void vault.toggleFavorite(doc.id)} style={styles.secondary}>
           <Text style={styles.secondaryText}>{doc.favorite ? 'Unmark' : 'Keep'}</Text>
@@ -131,9 +126,28 @@ export default function DocumentScreen() {
           <Text style={styles.secondaryText}>Readable copy</Text>
         </PressableScale>
       </View>
-      <PressableScale onPress={remove} style={styles.danger}>
-        <Text style={styles.dangerText}>Remove from vault</Text>
-      </PressableScale>
+      {armed ? (
+        <View style={styles.confirm}>
+          <Text style={styles.confirmText}>
+            Remove {doc.title} from this device? The sealed file is deleted and cannot be restored from the vault.
+          </Text>
+          <PressableScale accessibilityLabel="Cancel delete" disabled={removing} onPress={() => setArmed(false)} style={styles.cancel}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </PressableScale>
+          <PressableScale
+            accessibilityLabel={`Delete ${doc.title} from this device`}
+            disabled={removing}
+            onPress={() => void remove()}
+            style={styles.danger}
+          >
+            <Text style={styles.dangerText}>{removing ? 'Removing…' : 'Delete from this device'}</Text>
+          </PressableScale>
+        </View>
+      ) : (
+        <PressableScale accessibilityLabel={`Remove ${doc.title} from vault`} onPress={() => setArmed(true)} style={styles.remove}>
+          <Text style={styles.removeText}>Remove from vault</Text>
+        </PressableScale>
+      )}
     </Screen>
   );
 }
@@ -153,8 +167,6 @@ const styles = StyleSheet.create({
   field: { marginTop: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.line },
   fieldLabel: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
   fieldValue: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 24, marginTop: 4 },
-  textBlock: { marginTop: 18 },
-  text: { color: theme.paper, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 22 },
   secondary: {
     flex: 1,
@@ -165,6 +177,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
-  danger: { marginTop: 8, paddingVertical: 14 },
+  remove: { marginTop: 28, paddingVertical: 12, alignItems: 'center' },
+  removeText: { color: theme.paperFaint, fontFamily: font.medium, fontSize: 14 },
+  confirm: { marginTop: 28 },
+  confirmText: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
+  cancel: {
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.line,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  danger: { marginTop: 8, paddingVertical: 14, alignItems: 'center' },
   dangerText: { color: theme.danger, fontFamily: font.semibold, fontSize: 15 },
 });

@@ -27,6 +27,32 @@ test('sample passport text and fields', () => {
   assert.equal(inferKind(text), 'identity');
 });
 
+test('pdf text ignores strings that are not shown', () => {
+  const content = [
+    'BT',
+    '(ignore this parenthetical)',
+    '(Policy No: AB-99) Tj',
+    '<48656C6C6F> Tj',
+    '[(Wor) 40 (ld)] TJ',
+    '(###@@@###) Tj',
+    'ET',
+  ].join('\n');
+  const bytes = new TextEncoder().encode(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  const text = extractPdfText(bytes);
+  assert.match(text, /Policy No: AB-99/);
+  assert.match(text, /Hello/);
+  assert.match(text, /World/);
+  assert.doesNotMatch(text, /ignore this/);
+  assert.doesNotMatch(text, /###/);
+});
+
+test('pdf text uses a unicode map instead of raw character codes', () => {
+  const cmap = 'beginbfchar\n<01> <0048>\n<02> <0069>\nendbfchar\n';
+  const content = `BT\n(${String.fromCharCode(1, 2)}) Tj\nET`;
+  const file = `stream\n${cmap}endstream\nstream\n${content}\nendstream`;
+  assert.equal(extractPdfText(new TextEncoder().encode(file)), 'Hi');
+});
+
 test('flate-encoded pdf text', () => {
   const content = new TextEncoder().encode('BT\n(Policy No: AB-99) Tj\nET');
   const compressed = deflate(content);

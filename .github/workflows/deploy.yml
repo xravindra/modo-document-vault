@@ -1,0 +1,57 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Platform
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - web
+          - android
+          - ios
+
+jobs:
+  web:
+    name: Web
+    if: ${{ inputs.target == 'all' || inputs.target == 'web' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - run: npx expo export --platform web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist
+          if-no-files-found: error
+      - run: eas deploy --export-dir dist --production --non-interactive
+
+  native:
+    name: Android and iOS
+    if: ${{ inputs.target == 'all' || inputs.target == 'android' || inputs.target == 'ios' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - name: Build
+        run: eas build --platform ${{ inputs.target == 'all' && 'all' || inputs.target }} --profile production --non-interactive --no-wait

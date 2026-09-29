@@ -8,6 +8,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "export:web": "expo export --platform web",
+    "deploy": "npx eas-cli@latest workflow:run .eas/workflows/deploy.yml",
+    "deploy:preview": "npx eas-cli@latest workflow:run .eas/workflows/preview.yml",
+    "deploy:web": "npx eas-cli@latest deploy --production --non-interactive",
+    "release": "npx eas-cli@latest workflow:run .eas/workflows/release.yml",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/logic.test.mts"
   },
