@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "MODO",
+    "slug": "modo-document-vault",
+    "scheme": "modo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#101614",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.modo.documentvault",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "MODO uses Face ID to unlock your document vault."
+      }
+    },
+    "android": {
+      "package": "com.modo.documentvault",
+      "adaptiveIcon": {
+        "backgroundColor": "#101614"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "backgroundColor": "#101614"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "MODO uses Face ID to unlock your document vault."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "MODO uses Face ID to unlock your document vault."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MODO uses your photos only when you choose a document to seal in the vault.",
+          "cameraPermission": "MODO uses the camera only when you photograph a document to seal in the vault.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-file-system",
+        {
+          "supportsOpeningDocumentsInPlace": true,
+          "enableFileSharing": true
+        }
+      ],
+      "expo-status-bar",
+      "expo-sharing",
+      "expo-font",
+      "expo-splash-screen"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
