@@ -7,6 +7,7 @@ import { PinDots, PinPad } from '@/components/PinPad';
 import { Banner, PressableScale } from '@/components/ui';
 import { VaultMark } from '@/components/VaultMark';
 import { backupSummary } from '@/lib/backup';
+import { PIN_LENGTH } from '@/lib/pin';
 import { formatWhen } from '@/lib/format';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { pickBackupBytes } from '@/lib/pickBackup';
@@ -16,7 +17,8 @@ import { font, theme } from '@/theme';
 export function LockScreen() {
   const vault = useVault();
   const insets = useSafeAreaInsets();
-  const compact = useWindowDimensions().height < 780;
+  const { width, height } = useWindowDimensions();
+  const compact = height < 780;
   const [pin, setPin] = useState('');
   const [step, setStep] = useState<'enter' | 'confirm'>('enter');
   const [first, setFirst] = useState('');
@@ -167,9 +169,9 @@ export function LockScreen() {
       : 'Enter the PIN for the vault stored on this device. A restored backup uses the PIN from the phone that created it.';
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
+    <View style={[styles.root, width > 0 ? { width, maxWidth: width } : null, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
       <View style={styles.glow} pointerEvents="none" />
-      <View style={styles.column}>
+      <View style={[styles.column, { width: width > 0 ? Math.min(width, 460) : '100%', maxWidth: '100%' }]}>
         <VaultMark compact={compact} />
         <Text style={styles.kicker}>MODO</Text>
         <Text style={[styles.title, compact ? styles.titleCompact : null]}>{title}</Text>
@@ -194,11 +196,11 @@ export function LockScreen() {
           </View>
         ) : (
           <>
-            <PinDots length={pin.length} total={vault.pinLength} shake={shake} />
+            <PinDots length={pin.length} total={PIN_LENGTH} shake={shake} />
             <Banner message={paused ? `Try again in ${Math.ceil((lockedUntil - now) / 1000)}s.` : message || vault.error} />
             <PinPad
               value={pin}
-              length={vault.pinLength}
+              length={PIN_LENGTH}
               disabled={!!busy || paused}
               onChange={setPin}
               onComplete={(next) => void submit(next)}
@@ -235,15 +237,16 @@ export function BootScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.ink, alignItems: 'center', justifyContent: 'center' },
+  root: { flex: 1, backgroundColor: theme.ink, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   glow: {
     position: 'absolute',
-    width: 460,
-    height: 460,
+    width: '80%',
+    maxWidth: 460,
+    aspectRatio: 1,
     borderRadius: 230,
     backgroundColor: 'rgba(224, 192, 138, 0.07)',
   },
-  column: { width: '100%', maxWidth: 460, paddingHorizontal: 24 },
+  column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {
     color: theme.gold,
     fontFamily: font.semibold,

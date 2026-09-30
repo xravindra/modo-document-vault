@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 import type { BioMode } from '@/lib/keyStore';
 import { emptyCatalog, type ActivityEvent, type ExtractedField, type Settings, type VaultDocument } from '@/lib/types';
 import { PIN_LENGTH } from '@/lib/pin';
-import { session, VaultError, type AddDocumentInput } from '@/lib/vault';
+import { session, VaultError, type AddDocumentInput, type PageInput } from '@/lib/vault';
 
 type Status = 'booting' | 'locked' | 'unlocked';
 
@@ -26,9 +26,16 @@ type VaultApi = VaultModel & {
   unlockWithBiometrics: () => Promise<void>;
   lock: () => Promise<void>;
   addDocument: (input: AddDocumentInput) => Promise<VaultDocument>;
+  addPages: (id: string, pages: PageInput[]) => Promise<number>;
+  keepAndShow: (id: string, pageIndex: number, page: PageInput, locked: boolean) => Promise<void>;
+  togglePageLock: (id: string, pageIndex: number) => Promise<void>;
+  openDocument: (id: string, pageIndex?: number) => ReturnType<typeof session.openDocument>;
+  holdAutoLock: () => void;
+  releaseAutoLock: () => void;
   renameDocument: (id: string, fileName: string) => Promise<void>;
-  saveFields: (id: string, fields: ExtractedField[]) => Promise<void>;
+  saveFields: (id: string, fields: ExtractedField[], pageIndex?: number) => Promise<void>;
   removeDocument: (id: string) => Promise<void>;
+  removePage: (id: string, pageIndex: number) => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   verifyPin: (pin: string) => Promise<boolean>;
   changePin: (next: string) => Promise<void>;
@@ -67,6 +74,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   settingsRef.current = model.settings;
   const statusRef = useRef(model.status);
   statusRef.current = model.status;
+  const holdsRef = useRef(0);
+  const holdAutoLock = useCallback(() => {
+    holdsRef.current += 1;
+  }, []);
+  const releaseAutoLock = useCallback(() => {
+    holdsRef.current = Math.max(0, holdsRef.current - 1);
+  }, []);
 
   const publish = useCallback(async (status: Status, error: string | null = null) => {
     const snap = session.unlocked ? session.snapshot() : emptyCatalog();
@@ -113,7 +127,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let leftAt = 0;
     const sub = AppState.addEventListener('change', (next) => {
-      if (statusRef.current !== 'unlocked') return;
+      if (statusRef.current !== 'unlocked' || holdsRef.current > 0) return;
       const timeout = settingsRef.current.autoLockMs;
       if (timeout < 0) return;
       if (next === 'background') {
@@ -151,9 +165,26 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await publish('unlocked');
         return doc;
       },
+      addPages: async (id, pages) => {
+        const count = await session.addPages(id, pages);
+        await publish('unlocked');
+        return count;
+      },
+      keepAndShow: async (id, pageIndex, page, locked) => {
+        await session.keepAndShow(id, pageIndex, page, locked);
+        await publish('unlocked');
+      },
+      togglePageLock: async (id, pageIndex) => {
+        await session.togglePageLock(id, pageIndex);
+        await publish('unlocked');
+      },
+      openDocument: (id, pageIndex) => session.openDocument(id, pageIndex),
+      holdAutoLock,
+      releaseAutoLock,
       renameDocument: (id, fileName) => run(() => session.renameDocument(id, fileName), 'unlocked'),
-      saveFields: (id, fields) => run(() => session.saveFields(id, fields), 'unlocked'),
+      saveFields: (id, fields, pageIndex) => run(() => session.saveFields(id, fields, pageIndex), 'unlocked'),
       removeDocument: (id) => run(() => session.removeDocument(id), 'unlocked'),
+      removePage: (id, pageIndex) => run(() => session.removePage(id, pageIndex), 'unlocked'),
       updateSettings: (patch) => run(() => session.updateSettings(patch), 'unlocked'),
       verifyPin: (pin) => session.verifyPin(pin),
       changePin: (next) => run(() => session.changePin(next), 'unlocked'),
@@ -171,7 +202,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       importBackup: (bytes) => run(() => session.importBackup(bytes), 'locked'),
       destroy: () => run(() => session.destroy(), 'locked'),
     };
-  }, [lock, model, publish, refresh]);
+  }, [holdAutoLock, lock, model, publish, refresh, releaseAutoLock]);
 
   return <VaultContext.Provider value={api}>{children}</VaultContext.Provider>;
 }

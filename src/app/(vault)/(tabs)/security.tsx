@@ -26,7 +26,7 @@ export default function SecurityScreen() {
   const pillars = [
     {
       title: 'Confidentiality',
-      body: `Every file and the catalog are AES-256-GCM. A random vault key does the sealing. Your PIN only wraps that key with PBKDF2-HMAC-SHA256, ${KDF_ITERATIONS.toLocaleString('en-US')} rounds, using the device crypto when it can. The PIN is never stored.`,
+      body: `Every file and the catalog are AES-256-GCM. A random vault key does the sealing. Your PIN only wraps that key with PBKDF2-HMAC-SHA256, ${KDF_ITERATIONS.toLocaleString('en-US')} rounds. The PIN is never stored.`,
     },
     {
       title: 'Integrity',

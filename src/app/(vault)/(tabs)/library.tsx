@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DocumentCard } from '@/components/DocumentCard';
 import { PressableScale } from '@/components/ui';
+import { documentPages } from '@/lib/pages';
 import { KINDS, type DocKind } from '@/lib/types';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -25,6 +26,11 @@ export default function LibraryScreen() {
         doc.kind,
         doc.extraction.text,
         ...doc.extraction.fields.map((field) => `${field.label} ${field.value}`),
+        ...documentPages(doc).flatMap((page) => [
+          page.fileName,
+          page.extraction?.text ?? '',
+          ...(page.extraction?.fields ?? []).map((field) => `${field.label} ${field.value}`),
+        ]),
       ]
         .join(' ')
         .toLowerCase();

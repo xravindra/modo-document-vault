@@ -4,6 +4,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { PressableScale } from '@/components/ui';
 import { copyText } from '@/lib/copyText';
 import { shareDocument } from '@/lib/deliver';
+import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
 function ShareMark({ done }: { done: boolean }) {
@@ -65,6 +66,7 @@ export function FieldRow({
   onChangeValue?: (value: string) => void;
   onDelete?: () => void;
 }) {
+  const vault = useVault();
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
@@ -90,11 +92,14 @@ export function FieldRow({
   }
 
   async function share() {
+    vault.holdAutoLock();
     try {
       const outcome = await shareDocument({ title: label, text: `${label}: ${value}`, file: null });
       if (outcome !== 'cancelled') setShared(true);
     } catch {
       setShared(false);
+    } finally {
+      vault.releaseAutoLock();
     }
   }
 

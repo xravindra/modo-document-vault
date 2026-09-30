@@ -182,7 +182,7 @@ export default function SettingsScreen() {
           </Text>
           <PinPad
             value={pin}
-            length={pinStep === 'current' ? vault.pinLength : PIN_LENGTH}
+            length={PIN_LENGTH}
             disabled={busy}
             onChange={setPin}
             onComplete={(value) => void submitPin(value)}

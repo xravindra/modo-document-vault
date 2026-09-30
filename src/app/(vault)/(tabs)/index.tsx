@@ -50,13 +50,14 @@ export default function HomeScreen() {
       </Animated.View>
 
       <Text style={styles.section}>Recent</Text>
+      {recent.length > 0 ? <Text style={styles.hint}>Swipe right to download. Swipe left to share.</Text> : null}
       {recent.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>The shelf is clear</Text>
           <Text style={styles.emptyBody}>Files stay encrypted at rest. The library only keeps titles and the text that was read from them.</Text>
         </View>
       ) : (
-        recent.map((doc) => <DocumentCard key={doc.id} doc={doc} />)
+        recent.map((doc) => <DocumentCard key={doc.id} doc={doc} swipe />)
       )}
     </Screen>
   );
@@ -76,7 +77,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(158, 203, 178, 0.1)',
   },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  actions: { width: '100%', maxWidth: '100%', flexDirection: 'row', gap: 10, marginTop: 22 },
   primary: { flex: 1, backgroundColor: theme.gold, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   primaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   secondary: {
@@ -88,9 +89,10 @@ const styles = StyleSheet.create({
     borderColor: theme.line,
   },
   secondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  hint: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, marginBottom: 12 },
   section: {
     marginTop: 28,
-    marginBottom: 12,
+    marginBottom: 8,
     color: theme.paperDim,
     fontFamily: font.semibold,
     letterSpacing: 1.2,

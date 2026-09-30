@@ -3,6 +3,8 @@ export type Envelope = {
   iterations: number;
   sealed: string;
   pinLength?: number;
+  version?: number;
+  iv?: string;
 };
 
 export type BackupFile = {

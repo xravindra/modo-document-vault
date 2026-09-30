@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -70,12 +70,13 @@ function TabButton({
 
 export function Dock({ state, navigation }: DockProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const current = state.routes[state.index]?.name;
   if (!current || ![...LEFT, ...RIGHT].some((item) => item.name === current)) return null;
 
   return (
     <View pointerEvents="box-none" style={styles.slot}>
-      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.bar, { width: width > 48 ? Math.min(width - 24, 528) : '100%', maxWidth: '100%', paddingBottom: Math.max(insets.bottom, 12) }]}>
       {LEFT.map((item) => (
         <TabButton
           key={item.name}
@@ -107,10 +108,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 8,
     alignItems: 'center',
+    maxWidth: '100%',
   },
   bar: {
-    width: '92%',
-    maxWidth: 528,
+    maxWidth: '100%',
     borderRadius: 28,
     borderWidth: 1,
     borderColor: theme.line,

@@ -14,12 +14,14 @@ export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
       }}
       style={{
         alignSelf: 'stretch',
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden',
         height,
-        marginHorizontal: -22,
-        marginVertical: 0,
+        margin: 0,
         padding: 0,
         borderWidth: 0,
-        borderRadius: 0,
+        borderRadius: 12,
       }}
     >
       {width > 0

@@ -29,7 +29,7 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.ink }}>
+    <GestureHandlerRootView style={{ flex: 1, width: '100%', maxWidth: '100%', overflow: 'hidden', backgroundColor: theme.ink }}>
       <SafeAreaProvider>
         <VaultProvider>
           <StatusBar style="light" />

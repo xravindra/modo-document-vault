@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -41,18 +42,36 @@ export function Screen({
   scroll?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const pathname = usePathname();
   const docked = pathname === '/' || pathname === '/library' || pathname === '/activity' || pathname === '/security';
+  const frame = width > 0 ? { width, maxWidth: width } : { width: '100%' as const, maxWidth: '100%' as const };
   const body = (
-    <View style={[styles.column, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + (docked ? 124 : 32) }]}>
+    <View
+      style={[
+        styles.column,
+        {
+          width: width > 0 ? Math.min(width, 560) : '100%',
+          maxWidth: '100%',
+          paddingTop: insets.top + 18,
+          paddingBottom: insets.bottom + (docked ? 124 : 32),
+        },
+      ]}
+    >
       {children}
     </View>
   );
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, frame]}>
       <View style={styles.glow} pointerEvents="none" />
       {scroll ? (
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <ScrollView
+          horizontal={false}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={frame}
+          contentContainerStyle={[styles.scroll, frame]}
+        >
           {body}
         </ScrollView>
       ) : (
@@ -131,17 +150,18 @@ export function Banner({ message }: { message: string | null }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.ink, alignItems: 'center' },
+  root: { flex: 1, backgroundColor: theme.ink, alignItems: 'center', overflow: 'hidden' },
   glow: {
     position: 'absolute',
     top: -120,
-    width: 420,
-    height: 420,
+    width: '80%',
+    maxWidth: 420,
+    aspectRatio: 1,
     borderRadius: 210,
     backgroundColor: 'rgba(224, 192, 138, 0.08)',
   },
-  scroll: { alignItems: 'center', width: '100%' },
-  column: { width: '100%', maxWidth: 560, paddingHorizontal: 22 },
+  scroll: { alignItems: 'center', maxWidth: '100%' },
+  column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },
   disabled: { opacity: 0.45 },
   back: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 12 },
   backText: { color: theme.gold, fontFamily: font.medium, fontSize: 15 },
@@ -158,6 +178,7 @@ const styles = StyleSheet.create({
     fontSize: 40,
     lineHeight: 46,
     marginTop: 8,
+    maxWidth: '100%',
   },
   quiet: {
     color: theme.paperDim,
@@ -165,6 +186,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     marginTop: 10,
+    maxWidth: '100%',
   },
   banner: {
     marginTop: 16,

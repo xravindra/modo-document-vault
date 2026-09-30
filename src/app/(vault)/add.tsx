@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 
-import { FieldRow } from '@/components/FieldRow';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
 import { VaultMark } from '@/components/VaultMark';
 import { extractDocument, suggestedKind } from '@/lib/extract';
+import { MAX_PAGES } from '@/lib/pages';
 import { readSource } from '@/lib/readSource';
 import { buildSamplePassportPdf } from '@/lib/samplePdf';
-import { KINDS, type DocKind, type Extraction } from '@/lib/types';
+import type { DocKind } from '@/lib/types';
+import type { PageInput } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -20,7 +21,14 @@ type Draft = {
   mimeType: string;
   title: string;
   kind: DocKind;
+  extraPages: PageInput[];
 };
+
+function paint() {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 32);
+  });
+}
 
 function titleFrom(name: string) {
   return name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled document';
@@ -29,29 +37,36 @@ function titleFrom(name: string) {
 export default function AddScreen() {
   const vault = useVault();
   const params = useLocalSearchParams<{ sample?: string }>();
-  const [phase, setPhase] = useState<'choose' | 'details' | 'reading' | 'review'>('choose');
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [phase, setPhase] = useState<'choose' | 'reading'>('choose');
+  const [readingLabel, setReadingLabel] = useState('Reading the document…');
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const sampleRef = useRef(false);
 
   async function readPicked(next: Draft) {
-    setDraft(next);
+    setReadingLabel('Reading the document…');
     setPhase('reading');
     setMessage(null);
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 16);
-    });
+    await paint();
+    vault.holdAutoLock();
     try {
       const result = await extractDocument(next.bytes, next.mimeType, next.fileName);
-      const kind = suggestedKind(next.kind, result.text);
-      setDraft({ ...next, kind });
-      setExtraction(result);
-      setPhase('review');
+      const extraPages: PageInput[] = [];
+      for (const page of next.extraPages) {
+        const pageResult = page.extraction ?? (await extractDocument(page.bytes, page.mimeType, page.fileName));
+        extraPages.push({ ...page, extraction: pageResult });
+      }
+      const kind = suggestedKind(next.kind, [result.text, ...extraPages.map((page) => page.extraction?.text ?? '')].join('\n'));
+      setReadingLabel('Saving the document…');
+      await paint();
+      const doc = await vault.addDocument({ ...next, kind, extraPages, extraction: result });
+      router.replace(`/document/${doc.id}` as Href);
+      return true;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not read that file.');
-      setPhase('details');
+      setMessage(error instanceof Error ? error.message : 'Could not seal that document.');
+      setPhase('choose');
+      return false;
+    } finally {
+      vault.releaseAutoLock();
     }
   }
 
@@ -65,78 +80,101 @@ export default function AddScreen() {
       mimeType: 'application/pdf',
       title: 'Example passport',
       kind: 'identity',
+      extraPages: [],
     });
   }, [params.sample]);
 
+  async function acceptPages(pages: PageInput[]) {
+    const first = pages[0];
+    if (!first) return;
+    const limited = pages.slice(0, MAX_PAGES);
+    await readPicked({
+      bytes: first.bytes,
+      fileName: first.fileName,
+      mimeType: first.mimeType,
+      title: titleFrom(first.fileName),
+      kind: 'other',
+      extraPages: limited.slice(1),
+    });
+  }
+
   async function pickDocument() {
     setMessage(null);
-    const picked = await DocumentPicker.getDocumentAsync({
-      copyToCacheDirectory: true,
-      multiple: false,
-      base64: false,
-      type: ['application/pdf', 'image/*', 'text/plain'],
-    });
-    if (picked.canceled || !picked.assets[0]) return;
-    const asset = picked.assets[0];
+    vault.holdAutoLock();
     try {
-      const bytes = await readSource({
-        uri: asset.uri,
-        base64: asset.base64,
-        file: asset.file,
-        size: asset.size,
+      const picked = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: true,
+        base64: false,
+        type: ['application/pdf', 'image/*', 'text/plain'],
       });
-      setDraft({
-        bytes,
-        fileName: asset.name,
-        mimeType: asset.mimeType ?? 'application/octet-stream',
-        title: titleFrom(asset.name),
-        kind: 'other',
-      });
-      setPhase('details');
+      if (picked.canceled || picked.assets.length === 0) return;
+      setReadingLabel('Reading the file…');
+      setPhase('reading');
+      await paint();
+      const pages: PageInput[] = [];
+      for (const asset of picked.assets) {
+        const bytes = await readSource({
+          uri: asset.uri,
+          base64: asset.base64,
+          file: asset.file,
+          size: asset.size,
+        });
+        pages.push({
+          bytes,
+          fileName: asset.name,
+          mimeType: asset.mimeType ?? 'application/octet-stream',
+        });
+      }
+      await acceptPages(pages);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not read that file.');
+      setPhase('choose');
+    } finally {
+      vault.releaseAutoLock();
     }
   }
 
   async function pickImage(camera: boolean) {
     setMessage(null);
-    const permission = camera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setMessage(camera ? 'Camera permission is required to photograph a document.' : 'Photo permission is required to choose an image.');
-      return;
-    }
-    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.5, exif: false, base64: false };
-    const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
+    vault.holdAutoLock();
     try {
-      const bytes = await readSource({ uri: asset.uri, base64: asset.base64, size: asset.fileSize });
-      const fileName = asset.fileName ?? `photo-${Date.now()}.jpg`;
-      setDraft({
-        bytes,
-        fileName,
-        mimeType: asset.mimeType ?? 'image/jpeg',
-        title: titleFrom(fileName),
-        kind: 'other',
-      });
-      setPhase('details');
+      const permission = camera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setMessage(camera ? 'Camera permission is required to photograph a document.' : 'Photo permission is required to choose an image.');
+        return;
+      }
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        quality: 0.5,
+        exif: false,
+        base64: false,
+        allowsMultipleSelection: !camera,
+        selectionLimit: camera ? 1 : MAX_PAGES,
+      };
+      const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+      if (result.canceled || result.assets.length === 0) return;
+      setReadingLabel(camera ? 'Saving the photo…' : 'Saving the photos…');
+      setPhase('reading');
+      await paint();
+      const pages: PageInput[] = [];
+      for (const asset of result.assets) {
+        const bytes = await readSource({ uri: asset.uri, base64: asset.base64, size: asset.fileSize });
+        const fileName = asset.fileName ?? `photo-${Date.now()}-${pages.length + 1}.jpg`;
+        pages.push({
+          bytes,
+          fileName,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+        });
+      }
+      await acceptPages(pages);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not read that photo.');
-    }
-  }
-
-  async function seal() {
-    if (!draft || !extraction || busy) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const doc = await vault.addDocument({ ...draft, extraction });
-      router.replace(`/document/${doc.id}` as Href);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not seal the document.');
-      setBusy(false);
+      setPhase('choose');
+    } finally {
+      vault.releaseAutoLock();
     }
   }
 
@@ -144,18 +182,14 @@ export default function AddScreen() {
     <Screen>
       <BackButton label="Close" />
       <Kicker>Add</Kicker>
-      <Headline>{phase === 'review' ? 'What was read' : 'Seal a document'}</Headline>
-      <Quiet>
-        {phase === 'review'
-          ? 'Check the fields, then seal the original file. You can still keep it if nothing was extracted.'
-          : 'The original file is encrypted before it is written. Extraction happens on this device.'}
-      </Quiet>
+      <Headline>Seal a document</Headline>
+      <Quiet>The original file is encrypted before it is written. Extraction happens on this device.</Quiet>
       <Banner message={message} />
 
       {phase === 'choose' ? (
         <View style={styles.stack}>
-          <Choice label="Choose a file" detail="PDF, image, or text" onPress={() => void pickDocument()} />
-          <Choice label="Choose a photo" detail="From your library" onPress={() => void pickImage(false)} />
+          <Choice label="Choose a file" detail="PDF, image, or text. Several files become pages." onPress={() => void pickDocument()} />
+          <Choice label="Choose a photo" detail="Several photos become pages of one document" onPress={() => void pickImage(false)} />
           <Choice label="Take a photo" detail="Camera, used only for this capture" onPress={() => void pickImage(true)} />
           <Choice
             label="Try the sample passport"
@@ -167,71 +201,17 @@ export default function AddScreen() {
                 mimeType: 'application/pdf',
                 title: 'Example passport',
                 kind: 'identity',
+                extraPages: [],
               })
             }
           />
         </View>
       ) : null}
 
-      {phase === 'details' && draft ? (
-        <View>
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            value={draft.title}
-            onChangeText={(title) => setDraft({ ...draft, title })}
-            style={styles.input}
-            accessibilityLabel="Document title"
-          />
-          <Text style={styles.label}>Kind</Text>
-          <View style={styles.kinds}>
-            {KINDS.map((item) => (
-              <PressableScale
-                key={item.id}
-                onPress={() => setDraft({ ...draft, kind: item.id })}
-                style={[styles.chip, draft.kind === item.id ? styles.chipOn : null]}
-              >
-                <Text style={[styles.chipText, draft.kind === item.id ? styles.chipTextOn : null]}>{item.label}</Text>
-              </PressableScale>
-            ))}
-          </View>
-          <PressableScale onPress={() => void readPicked(draft)} style={styles.primary}>
-            <Text style={styles.primaryText}>Read the document</Text>
-          </PressableScale>
-        </View>
-      ) : null}
-
       {phase === 'reading' ? (
         <View style={styles.reading}>
           <VaultMark compact />
-          <Text style={styles.readingText}>Reading the document…</Text>
-        </View>
-      ) : null}
-
-      {phase === 'review' && draft && extraction ? (
-        <View>
-          <Text style={styles.note}>{extraction.note}</Text>
-          <Text style={styles.label}>Kind</Text>
-          <View style={styles.kinds}>
-            {KINDS.map((item) => (
-              <PressableScale
-                key={item.id}
-                onPress={() => setDraft({ ...draft, kind: item.id })}
-                style={[styles.chip, draft.kind === item.id ? styles.chipOn : null]}
-              >
-                <Text style={[styles.chipText, draft.kind === item.id ? styles.chipTextOn : null]}>{item.label}</Text>
-              </PressableScale>
-            ))}
-          </View>
-          {extraction.fields.length === 0 ? (
-            <Text style={styles.note}>No structured fields were found. The file can still be sealed.</Text>
-          ) : (
-            extraction.fields.map((field) => (
-              <FieldRow key={`${field.key}-${field.value}`} label={field.label} value={field.value} />
-            ))
-          )}
-          <PressableScale disabled={busy} onPress={() => void seal()} style={styles.primary}>
-            <Text style={styles.primaryText}>{busy ? 'Sealing…' : 'Seal in the vault'}</Text>
-          </PressableScale>
+          <Text style={styles.readingText}>{readingLabel}</Text>
         </View>
       ) : null}
     </Screen>
@@ -252,34 +232,6 @@ const styles = StyleSheet.create({
   choice: { borderRadius: 20, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.inkRaised, padding: 16 },
   choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
   choiceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 4 },
-  label: {
-    marginTop: 20,
-    marginBottom: 8,
-    color: theme.paperDim,
-    fontFamily: font.semibold,
-    fontSize: 12,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  input: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.line,
-    color: theme.paper,
-    fontFamily: font.body,
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: theme.inkRaised,
-  },
-  kinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: 999, borderWidth: 1, borderColor: theme.line, paddingHorizontal: 12, paddingVertical: 8 },
-  chipOn: { backgroundColor: theme.gold, borderColor: theme.gold },
-  chipText: { color: theme.paper, fontFamily: font.medium, fontSize: 13 },
-  chipTextOn: { color: theme.ink },
-  primary: { marginTop: 22, backgroundColor: theme.gold, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
-  primaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   reading: { alignItems: 'center', marginTop: 24 },
   readingText: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
-  note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
 });

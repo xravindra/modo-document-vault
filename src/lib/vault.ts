@@ -2,22 +2,22 @@ import { AESEncryptionKey, randomUUID } from 'expo-crypto';
 
 import { parseBackup, serializeBackup, type BackupFile } from './backup';
 import { isPin, PIN_LENGTH } from './pin';
-import { base64ToBytes, bytesToBase64, exceedsFileLimit, renamedFileName } from './bytes';
+import { base64ToBytes, bytesToBase64, exceedsFileLimit, renamedFileName, wipe } from './bytes';
 import { deviceBiometricsAvailable, promptBiometrics } from './biometrics';
 import * as blobs from './blobStore';
 import * as keys from './keyStore';
-import {
-  createEnvelope,
-  KDF_ITERATIONS,
-  openBytes,
-  openEnvelope,
-  sealBytes,
-  sha256Hex,
-  VaultError,
-} from './seal';
-import { emptyCatalog, type ActivityType, type Catalog, type DocKind, type Extraction, type Settings, type VaultDocument } from './types';
+import { createEnvelope, openBytes, openEnvelope, sealBytes, sha256Hex, VaultError } from './seal';
+import { documentPages, MAX_PAGES, pageBlobName, pageExtraction, pageTwinBlobName } from './pages';
+import { emptyCatalog, type ActivityType, type Catalog, type DocKind, type DocumentPage, type Extraction, type PageCopy, type Settings, type VaultDocument } from './types';
 const CATALOG = 'catalog.bin';
 const MAX_ACTIVITY = 180;
+
+export type PageInput = {
+  fileName: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  extraction?: Extraction;
+};
 
 export type AddDocumentInput = {
   title: string;
@@ -26,12 +26,15 @@ export type AddDocumentInput = {
   mimeType: string;
   bytes: Uint8Array;
   extraction: Extraction;
+  extraPages?: PageInput[];
 };
 
 export type OpenedDocument = {
   doc: VaultDocument;
   bytes: Uint8Array | null;
   integrity: 'ok' | 'failed';
+  fileName: string;
+  mimeType: string;
 };
 
 class VaultSession {
@@ -99,10 +102,7 @@ class VaultSession {
   }
 
   async expectedPinLength() {
-    const envelope = await keys.readEnvelope();
-    if (!envelope) return PIN_LENGTH;
-    if (envelope.pinLength === 4 || envelope.pinLength === 6) return envelope.pinLength;
-    return envelope.iterations === KDF_ITERATIONS ? PIN_LENGTH : 6;
+    return PIN_LENGTH;
   }
 
   async biometricsReady() {
@@ -119,7 +119,12 @@ class VaultSession {
       if (!isPin(pin)) throw new VaultError(`Use a ${PIN_LENGTH}-digit PIN.`);
       if (await keys.readEnvelope()) throw new VaultError('A vault already exists on this device.');
       const vaultKey = await AESEncryptionKey.generate();
-      await keys.writeEnvelope(await createEnvelope(pin, vaultKey));
+      try {
+        await this.commitPin(pin, vaultKey);
+      } catch (error) {
+        await keys.clearEnvelope();
+        throw error;
+      }
       this.key = vaultKey;
       this.catalog = emptyCatalog();
       this.remember('create', 'Vault created on this device');
@@ -135,9 +140,9 @@ class VaultSession {
       try {
         key = await openEnvelope(pin, envelope);
         this.key = key;
-      } catch {
+      } catch (error) {
         this.key = null;
-        throw new VaultError('That PIN does not open this vault.');
+        throw error instanceof VaultError ? error : new VaultError('That PIN does not open this vault.');
       }
       try {
         this.catalog = await this.readCatalog();
@@ -150,8 +155,34 @@ class VaultSession {
       } else {
         this.remember('unlock', 'Vault opened');
       }
+      if (envelope.version !== 2) {
+        try {
+          await this.commitPin(pin, key);
+        } catch {
+          // The PIN opened this vault. Keep the existing seal if the newer wrap cannot be saved.
+        }
+      }
       await this.persist();
     });
+  }
+
+  private async commitPin(pin: string, key: AESEncryptionKey) {
+    const previous = await keys.readEnvelope();
+    try {
+      await keys.writeEnvelope(await createEnvelope(pin, key));
+      const saved = await keys.readEnvelope();
+      if (!saved) throw new VaultError('The PIN could not be saved on this device. Try again.');
+      const opened = await openEnvelope(pin, saved);
+      const savedBytes = new Uint8Array(await opened.bytes());
+      const freshBytes = new Uint8Array(await key.bytes());
+      const match = savedBytes.byteLength === freshBytes.byteLength && savedBytes.every((byte, index) => byte === freshBytes[index]);
+      wipe(savedBytes);
+      wipe(freshBytes);
+      if (!match) throw new VaultError('The PIN could not be saved on this device. Try again.');
+    } catch (error) {
+      if (previous) await keys.writeEnvelope(previous).catch(() => undefined);
+      throw error;
+    }
   }
 
   unlockWithBiometrics() {
@@ -184,26 +215,51 @@ class VaultSession {
     });
   }
 
+  private async sealPages(key: AESEncryptionKey, id: string, pages: PageInput[], start = 0): Promise<DocumentPage[]> {
+    const stored: DocumentPage[] = [];
+    for (let offset = 0; offset < pages.length; offset += 1) {
+      const page = pages[offset];
+      if (!page) continue;
+      if (exceedsFileLimit(page.bytes.byteLength)) {
+        throw new VaultError('Documents larger than 12 MB are not sealed in this version.');
+      }
+      if (page.bytes.byteLength === 0) throw new VaultError('That file is empty.');
+      const sha256 = await sha256Hex(page.bytes);
+      await blobs.writeBlob(pageBlobName(id, start + offset), await sealBytes(key, page.bytes));
+      stored.push({
+        fileName: page.fileName,
+        mimeType: page.mimeType || 'application/octet-stream',
+        byteLength: page.bytes.byteLength,
+        sha256,
+        ...(page.extraction ? { extraction: page.extraction } : {}),
+      });
+    }
+    return stored;
+  }
+
   addDocument(input: AddDocumentInput) {
     return this.enqueue(async () => {
       const key = this.assertOpen();
-      if (exceedsFileLimit(input.bytes.byteLength)) {
-        throw new VaultError('Documents larger than 12 MB are not sealed in this version.');
-      }
-      if (input.bytes.byteLength === 0) throw new VaultError('That file is empty.');
+      const incoming = 1 + (input.extraPages?.length ?? 0);
+      if (incoming > MAX_PAGES) throw new VaultError(`A document can hold ${MAX_PAGES} pages.`);
       const id = randomUUID();
-      const sha256 = await sha256Hex(input.bytes);
-      await blobs.writeBlob(`${id}.bin`, await sealBytes(key, input.bytes));
+      const pages = await this.sealPages(key, id, [
+        { fileName: input.fileName, mimeType: input.mimeType, bytes: input.bytes, extraction: input.extraction },
+        ...(input.extraPages ?? []),
+      ]);
+      const first = pages[0];
+      if (!first) throw new VaultError('That file is empty.');
       const doc: VaultDocument = {
         id,
         title: input.title.trim() || 'Untitled document',
         kind: input.kind,
-        fileName: input.fileName,
-        mimeType: input.mimeType || 'application/octet-stream',
-        byteLength: input.bytes.byteLength,
-        sha256,
+        fileName: first.fileName,
+        mimeType: first.mimeType,
+        byteLength: first.byteLength,
+        sha256: first.sha256,
         createdAt: Date.now(),
         extraction: input.extraction,
+        pages: pages.length > 1 ? pages : undefined,
       };
       this.catalog.documents.unshift(doc);
       this.remember('add', `Sealed ${doc.title}`);
@@ -220,13 +276,14 @@ class VaultSession {
       const nextName = renamedFileName(fileName, doc?.fileName ?? '');
       if (!doc || !nextName || nextName === doc.fileName) return;
       const title = nextName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || doc.title;
-      this.catalog.documents[index] = { ...doc, fileName: nextName, title };
+      const pages = doc.pages?.map((page, pageIndex) => (pageIndex === 0 ? { ...page, fileName: nextName } : page));
+      this.catalog.documents[index] = { ...doc, fileName: nextName, title, pages };
       this.remember('rename', `Renamed ${doc.fileName} to ${nextName}`);
       await this.persist();
     });
   }
 
-  saveFields(id: string, fields: { key: string; label: string; value: string; confidence: number }[]) {
+  saveFields(id: string, fields: { key: string; label: string; value: string; confidence: number }[], pageIndex = 0) {
     return this.enqueue(async () => {
       this.assertOpen();
       const index = this.catalog.documents.findIndex((item) => item.id === id);
@@ -238,22 +295,152 @@ class VaultSession {
         if (!label && !value) return [];
         return [{ key: field.key, label: label || 'Field', confidence: field.confidence, value }];
       });
+      const current = pageExtraction(doc, pageIndex);
+      const extraction = { ...current, fields: next };
+      const storedPages = doc.pages && doc.pages.length > 0 ? documentPages(doc) : null;
+      const pages = storedPages?.map((page, itemIndex) => (itemIndex === pageIndex ? { ...page, extraction } : page));
       this.catalog.documents[index] = {
         ...doc,
-        extraction: { ...doc.extraction, fields: next },
+        extraction: pageIndex === 0 ? extraction : doc.extraction,
+        pages,
       };
       this.remember('edit', `Saved fields on ${doc.title}`);
       await this.persist();
     });
   }
 
-  async openDocument(id: string): Promise<OpenedDocument> {
+  addPages(id: string, pages: PageInput[]) {
+    return this.enqueue(async () => {
+      const key = this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc || pages.length === 0) return doc ? documentPages(doc).length : 0;
+      const existing = documentPages(doc);
+      if (existing.length + pages.length > MAX_PAGES) {
+        throw new VaultError(`A document can hold ${MAX_PAGES} pages.`);
+      }
+      const added = await this.sealPages(key, id, pages, existing.length);
+      const nextPages = [...existing, ...added];
+      const first = nextPages[0] ?? existing[0];
+      if (!first) return existing.length;
+      this.catalog.documents[index] = {
+        ...doc,
+        fileName: first.fileName,
+        mimeType: first.mimeType,
+        byteLength: first.byteLength,
+        sha256: first.sha256,
+        pages: nextPages,
+      };
+      this.remember('add', `Added ${added.length} ${added.length === 1 ? 'page' : 'pages'} to ${doc.title}`);
+      await this.persist();
+      return nextPages.length;
+    });
+  }
+
+  keepAndShow(id: string, pageIndex: number, input: PageInput, locked: boolean) {
+    return this.enqueue(async () => {
+      const key = this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) throw new VaultError('That document is not in the vault.');
+      if (input.bytes.byteLength === 0) throw new VaultError('That file is empty.');
+      if (exceedsFileLimit(input.bytes.byteLength)) {
+        throw new VaultError('Documents larger than 12 MB are not sealed in this version.');
+      }
+      const pages = documentPages(doc);
+      const at = Math.min(Math.max(pageIndex, 0), Math.max(pages.length - 1, 0));
+      const current = pages[at];
+      if (!current) throw new VaultError('That page is not in the vault.');
+      const currentSealed = await blobs.readBlob(pageBlobName(id, at));
+      if (!currentSealed) throw new VaultError('That page is not in the vault.');
+      const sha256 = await sha256Hex(input.bytes);
+      const twin: PageCopy = {
+        fileName: current.fileName,
+        mimeType: current.mimeType,
+        byteLength: current.byteLength,
+        sha256: current.sha256,
+        extraction: current.extraction,
+      };
+      const nextPage: DocumentPage = {
+        fileName: input.fileName || current.fileName,
+        mimeType: input.mimeType || current.mimeType,
+        byteLength: input.bytes.byteLength,
+        sha256,
+        extraction: input.extraction ?? current.extraction,
+        locked,
+        twin,
+      };
+      await blobs.writeBlob(pageTwinBlobName(id, at), currentSealed);
+      await blobs.writeBlob(pageBlobName(id, at), await sealBytes(key, input.bytes));
+      this.putPages(index, doc, pages.map((page, pageAt) => (pageAt === at ? nextPage : page)), at);
+      this.remember('edit', locked ? `Locked a copy of ${doc.title}` : `Unlocked a copy of ${doc.title}`);
+      await this.persist();
+    });
+  }
+
+  togglePageLock(id: string, pageIndex: number) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) throw new VaultError('That document is not in the vault.');
+      const pages = documentPages(doc);
+      const at = Math.min(Math.max(pageIndex, 0), Math.max(pages.length - 1, 0));
+      const current = pages[at];
+      if (!current?.twin) throw new VaultError('There is no other copy of this page.');
+      const active = await blobs.readBlob(pageBlobName(id, at));
+      const twinBlob = await blobs.readBlob(pageTwinBlobName(id, at));
+      if (!active || !twinBlob) throw new VaultError('The other copy of this page is missing.');
+      await blobs.writeBlob(pageBlobName(id, at), twinBlob);
+      await blobs.writeBlob(pageTwinBlobName(id, at), active);
+      const nextPage: DocumentPage = {
+        fileName: current.twin.fileName,
+        mimeType: current.twin.mimeType,
+        byteLength: current.twin.byteLength,
+        sha256: current.twin.sha256,
+        extraction: current.twin.extraction,
+        locked: !current.locked,
+        twin: {
+          fileName: current.fileName,
+          mimeType: current.mimeType,
+          byteLength: current.byteLength,
+          sha256: current.sha256,
+          extraction: current.extraction,
+        },
+      };
+      this.putPages(index, doc, pages.map((page, pageAt) => (pageAt === at ? nextPage : page)), at);
+      this.remember('edit', nextPage.locked ? `Showing the locked file for ${doc.title}` : `Showing the open file for ${doc.title}`);
+      await this.persist();
+    });
+  }
+
+  private putPages(index: number, doc: VaultDocument, pages: DocumentPage[], at: number) {
+    const root = pages[0];
+    const active = pages[at];
+    const keepPages = pages.length > 1 || pages.some((page) => page.twin || page.locked);
+    this.catalog.documents[index] = {
+      ...doc,
+      fileName: root?.fileName ?? doc.fileName,
+      mimeType: root?.mimeType ?? doc.mimeType,
+      byteLength: root?.byteLength ?? doc.byteLength,
+      sha256: root?.sha256 ?? doc.sha256,
+      extraction: at === 0 ? (active?.extraction ?? doc.extraction) : doc.extraction,
+      pages: keepPages ? pages : undefined,
+    };
+  }
+
+  async openDocument(id: string, pageIndex = 0): Promise<OpenedDocument> {
     const key = this.assertOpen();
     const doc = this.catalog.documents.find((item) => item.id === id);
     if (!doc) throw new VaultError('That document is not in the vault.');
-    const sealed = await blobs.readBlob(`${id}.bin`);
-    if (!sealed) {
-      return { doc, bytes: null, integrity: 'failed' };
+    const pages = documentPages(doc);
+    const index = Math.min(Math.max(pageIndex, 0), pages.length - 1);
+    const page = pages[index] ?? pages[0];
+    const fileName = page?.fileName ?? doc.fileName;
+    const mimeType = page?.mimeType ?? doc.mimeType;
+    const sealed = await blobs.readBlob(pageBlobName(id, index));
+    if (!sealed || !page) {
+      return { doc, bytes: null, integrity: 'failed', fileName, mimeType };
     }
     try {
       const plain = await openBytes(key, sealed);
@@ -270,20 +457,75 @@ class VaultSession {
           this.viewed.delete(id);
         }
       }
-      return { doc, bytes: plain, integrity: hash === doc.sha256 ? 'ok' : 'failed' };
+      return { doc, bytes: plain, integrity: hash === page.sha256 ? 'ok' : 'failed', fileName, mimeType };
     } catch {
-      return { doc, bytes: null, integrity: 'failed' };
+      return { doc, bytes: null, integrity: 'failed', fileName, mimeType };
     }
   }
 
+  private async deleteDocument(id: string) {
+    this.assertOpen();
+    const doc = this.catalog.documents.find((item) => item.id === id);
+    if (!doc) return;
+    const count = documentPages(doc).length;
+    for (let index = 0; index < count; index += 1) {
+      await blobs.removeBlob(pageBlobName(id, index));
+      await blobs.removeBlob(pageTwinBlobName(id, index));
+    }
+    this.catalog.documents = this.catalog.documents.filter((item) => item.id !== id);
+    this.remember('delete', `Removed ${doc.title}`);
+    await this.persist();
+  }
+
   removeDocument(id: string) {
+    return this.enqueue(() => this.deleteDocument(id));
+  }
+
+  removePage(id: string, pageIndex: number) {
     return this.enqueue(async () => {
       this.assertOpen();
-      const doc = this.catalog.documents.find((item) => item.id === id);
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
       if (!doc) return;
-      await blobs.removeBlob(`${id}.bin`);
-      this.catalog.documents = this.catalog.documents.filter((item) => item.id !== id);
-      this.remember('delete', `Removed ${doc.title}`);
+      const pages = documentPages(doc);
+      if (pages.length <= 1) {
+        await this.deleteDocument(id);
+        return;
+      }
+      const drop = Math.min(Math.max(pageIndex, 0), pages.length - 1);
+      const sealed: Array<Uint8Array | null> = [];
+      const twins: Array<Uint8Array | null> = [];
+      for (let itemIndex = 0; itemIndex < pages.length; itemIndex += 1) {
+        sealed.push(await blobs.readBlob(pageBlobName(id, itemIndex)));
+        twins.push(await blobs.readBlob(pageTwinBlobName(id, itemIndex)));
+      }
+      for (let itemIndex = 0; itemIndex < pages.length; itemIndex += 1) {
+        await blobs.removeBlob(pageBlobName(id, itemIndex));
+        await blobs.removeBlob(pageTwinBlobName(id, itemIndex));
+      }
+      const kept = pages.filter((_, itemIndex) => itemIndex !== drop);
+      const keptSealed = sealed.filter((_, itemIndex) => itemIndex !== drop);
+      const keptTwins = twins.filter((_, itemIndex) => itemIndex !== drop);
+      for (let itemIndex = 0; itemIndex < keptSealed.length; itemIndex += 1) {
+        const bytes = keptSealed[itemIndex];
+        if (bytes) await blobs.writeBlob(pageBlobName(id, itemIndex), bytes);
+        const twinBytes = keptTwins[itemIndex];
+        if (twinBytes) await blobs.writeBlob(pageTwinBlobName(id, itemIndex), twinBytes);
+      }
+      const first = kept[0];
+      if (!first) return;
+      const extraction = drop === 0 ? (first.extraction ?? pageExtraction(doc, 1)) : doc.extraction;
+      const keepPages = kept.length > 1 || kept.some((page) => page.twin || page.locked);
+      this.catalog.documents[index] = {
+        ...doc,
+        fileName: first.fileName,
+        mimeType: first.mimeType,
+        byteLength: first.byteLength,
+        sha256: first.sha256,
+        extraction,
+        pages: keepPages ? kept : undefined,
+      };
+      this.remember('delete', `Removed a page from ${doc.title}`);
       await this.persist();
     });
   }
@@ -311,7 +553,7 @@ class VaultSession {
     return this.enqueue(async () => {
       const key = this.assertOpen();
       if (!isPin(next)) throw new VaultError(`Use a ${PIN_LENGTH}-digit PIN.`);
-      await keys.writeEnvelope(await createEnvelope(next, key));
+      await this.commitPin(next, key);
       this.remember('pin-change', 'PIN changed');
       await this.persist();
     });
