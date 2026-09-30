@@ -19,11 +19,11 @@ const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const PHONE =
   /(?:\+\d{1,3}[\s().-]*)(?:\d[\s().-]*){7,14}\d|\(\d{2,4}\)[\s.-]*\d{3,4}[\s.-]*\d{3,4}|\b\d{2,4}[\s.-]\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{2,4})?\b/g;
 const DATE =
-  /\b(?:\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/.]\d{1,2}[/.]\d{4})\b/gi;
+  /\b(?:\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/.]\d{1,2}[/.]\d{4})\b|[०-९]{1,2}[/.][०-९]{1,2}[/.][०-९]{4}/gi;
 const URL = /\bhttps?:\/\/[^\s<>"']+/gi;
 const IBAN = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g;
-const AMOUNT = /[$€£]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b(?:USD|EUR|GBP|INR|CAD|AUD)\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi;
-const LABELED = /^([\p{L}][\p{L}\p{N}&/'(). ]{0,42}?)\s*(?::|：|\s[-–]\s)\s*(.+)$/u;
+const AMOUNT = /[$€£₹]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b(?:USD|EUR|GBP|INR|CAD|AUD|Rs\.?)\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi;
+const LABELED = /^([\p{L}][\p{L}\p{M}\p{N}&/'(). ]{0,42}?)\s*(?::|：|\s[-–]\s)\s*(.+)$/u;
 const SKIP_LABEL = /^(?:page|pages|note|notes|see|the|and|or|to|a|an|of|by|for|with)$/i;
 
 function clean(value: string): string {
@@ -108,7 +108,7 @@ function readLabeled(line: string, fields: ExtractedField[]) {
   ];
   if (entities.length > 1) return;
   const value = entities.length === 1 && raw.toLowerCase().includes(entities[0].toLowerCase()) ? entities[0] : raw;
-  const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
+  const key = label.toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
   pushField(fields, { key, label, value, confidence: 0.84 });
 }
 

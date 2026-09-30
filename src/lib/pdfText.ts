@@ -92,6 +92,27 @@ function readLiteralSpan(content: string, start: number): { value: string; next:
   return { value: decodeLiteral(body), next: Math.min(cursor + 1, content.length) };
 }
 
+function utf16be(bytes: number[], start: number): string {
+  let text = '';
+  for (let index = start; index + 1 < bytes.length; index += 2) {
+    text += String.fromCharCode((bytes[index]! << 8) | bytes[index + 1]!);
+  }
+  return text;
+}
+
+function looksLikeUtf16(bytes: number[]): boolean {
+  if (bytes.length < 4 || bytes.length % 2 !== 0) return false;
+  let likely = 0;
+  const pairs = bytes.length / 2;
+  for (let index = 0; index < bytes.length; index += 2) {
+    const code = ((bytes[index] ?? 0) << 8) | (bytes[index + 1] ?? 0);
+    if (code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20) likely += 1;
+    else if ((bytes[index] ?? 0) === 0x00 && code >= 0x20 && code !== 0x7f) likely += 1;
+    else if (code >= 0x0900 && code <= 0x097f) likely += 1;
+  }
+  return likely / pairs >= 0.75;
+}
+
 function decodeHex(body: string): string {
   const hex = body.replace(/\s/g, '');
   const bytes: number[] = [];
@@ -100,13 +121,8 @@ function decodeHex(body: string): string {
     if (Number.isNaN(value)) return '';
     bytes.push(value);
   }
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    let text = '';
-    for (let index = 2; index + 1 < bytes.length; index += 2) {
-      text += String.fromCharCode((bytes[index]! << 8) | bytes[index + 1]!);
-    }
-    return text;
-  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return utf16be(bytes, 2);
+  if (looksLikeUtf16(bytes)) return utf16be(bytes, 0);
   let text = '';
   const size = 4096;
   for (let index = 0; index < bytes.length; index += size) {
@@ -193,18 +209,46 @@ function absorbCmap(content: string, map: Map<number, string>) {
 
 function applyCmap(value: string, map: Map<number, string>): string {
   if (map.size === 0 || !value) return value;
-  const plain = value.match(/[A-Za-z]/g)?.length ?? 0;
-  if (plain / value.length > 0.6) return value;
+  const latin = value.match(/[A-Za-z]/g)?.length ?? 0;
+  if (latin / value.length > 0.6 || /[\u0900-\u097F]/.test(value)) return value;
+  let wide = false;
+  for (const key of map.keys()) {
+    if (key > 255) {
+      wide = true;
+      break;
+    }
+  }
   let text = '';
   let hits = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const mapped = map.get(value.charCodeAt(index));
-    if (mapped) {
-      text += mapped;
-      hits += 1;
-    } else text += value[index];
+  if (wide && value.length >= 2) {
+    for (let index = 0; index + 1 < value.length; index += 2) {
+      const code = (value.charCodeAt(index) << 8) | (value.charCodeAt(index + 1) & 255);
+      const mapped = map.get(code);
+      if (mapped) {
+        text += mapped;
+        hits += 1;
+      } else text += `${value[index] ?? ''}${value[index + 1] ?? ''}`;
+    }
+    if (value.length % 2 === 1) text += value[value.length - 1] ?? '';
+  } else {
+    for (let index = 0; index < value.length; index += 1) {
+      const mapped = map.get(value.charCodeAt(index));
+      if (mapped) {
+        text += mapped;
+        hits += 1;
+      } else text += value[index] ?? '';
+    }
   }
   return hits > 0 ? text : value;
+}
+
+const ORDINARY = /[\p{L}\p{M}\p{N}\s.,:;'"()/+@#%&$*€£₹।॥-]/gu;
+
+function readableRatio(value: string): number {
+  const visible = value.replace(/\p{Cf}/gu, '');
+  if (!visible) return 1;
+  const ordinary = visible.match(ORDINARY)?.length ?? 0;
+  return ordinary / visible.length;
 }
 
 function usableString(value: string): string {
@@ -219,19 +263,16 @@ function usableString(value: string): string {
     cleaned += char;
   }
   if (cleaned.length > 2000) return '';
-  if (cleaned.length > 12) {
-    const ordinary = cleaned.match(/[\p{L}\p{N}\s.,:;'"()/+@#%&$*€£-]/gu)?.length ?? 0;
-    if (ordinary / cleaned.length < 0.8) return '';
-  }
+  if (cleaned.length > 12 && readableRatio(cleaned) < 0.8) return '';
   return cleaned;
 }
 
 function keepFragment(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  const letters = trimmed.match(/\p{L}/gu)?.length ?? 0;
-  const odd = trimmed.match(/[^\p{L}\p{N}\s.,:;'"()/+@#%&$*€£<>_-]/gu)?.length ?? 0;
-  if (odd > trimmed.length * 0.34) return false;
+  const visible = trimmed.replace(/\p{Cf}/gu, '');
+  const letters = visible.match(/\p{L}/gu)?.length ?? 0;
+  if (1 - readableRatio(visible) > 0.34) return false;
   if (letters > 0) return true;
   return trimmed.length <= 40 && /\p{N}/u.test(trimmed);
 }
@@ -239,9 +280,9 @@ function keepFragment(value: string): boolean {
 function keepLine(line: string): boolean {
   const trimmed = line.replace(/[ \t]+/g, ' ').trim();
   if (!trimmed) return false;
-  const letters = trimmed.match(/\p{L}/gu)?.length ?? 0;
-  const odd = trimmed.match(/[^\p{L}\p{N}\s.,:;'"()/+@#%&$*€£<>_-]/gu)?.length ?? 0;
-  if (odd > trimmed.length * 0.2) return false;
+  const visible = trimmed.replace(/\p{Cf}/gu, '');
+  const letters = visible.match(/\p{L}/gu)?.length ?? 0;
+  if (1 - readableRatio(visible) > 0.2) return false;
   if (letters >= 2) return true;
   return trimmed.length <= 40 && /[\p{L}\p{N}]/u.test(trimmed);
 }

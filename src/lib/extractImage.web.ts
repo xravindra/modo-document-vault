@@ -4,7 +4,7 @@ export async function extractImageText(
 ): Promise<{ text: string; note: string }> {
   try {
     const { createWorker } = await import('tesseract.js');
-    const worker = await createWorker('eng', 1, {
+    const worker = await createWorker('eng+mar', 1, {
       logger: () => undefined,
     });
     try {
@@ -12,7 +12,7 @@ export async function extractImageText(
       const result = await worker.recognize(blob);
       return {
         text: result.data.text ?? '',
-        note: 'Text was recognized on this device. The English language pack is downloaded once by the recognition engine. The photo itself is not uploaded.',
+        note: 'Text was recognized on this device in English and Marathi. Those language packs are downloaded once by the recognition engine. The photo itself is not uploaded.',
       };
     } finally {
       await worker.terminate();
