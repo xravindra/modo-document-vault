@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
@@ -13,11 +14,19 @@ const ROWS = [
   ['', '0', 'del'],
 ];
 
-export function PinDots({ length, shake }: { length: number; shake: SharedValue<number> }) {
+export function PinDots({
+  length,
+  total = PIN_LENGTH,
+  shake,
+}: {
+  length: number;
+  total?: number;
+  shake: SharedValue<number>;
+}) {
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   return (
     <Animated.View style={[styles.dots, style]}>
-      {Array.from({ length: PIN_LENGTH }, (_, index) => (
+      {Array.from({ length: total }, (_, index) => (
         <View key={index} style={[styles.dot, index < length ? styles.dotOn : null]} />
       ))}
     </Animated.View>
@@ -26,26 +35,37 @@ export function PinDots({ length, shake }: { length: number; shake: SharedValue<
 
 export function PinPad({
   value,
+  length = PIN_LENGTH,
   disabled,
   onChange,
   onComplete,
 }: {
   value: string;
+  length?: number;
   disabled?: boolean;
   onChange: (next: string) => void;
   onComplete: (pin: string) => void;
 }) {
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
   function press(key: string) {
     if (disabled) return;
     hapticTick();
+    const current = valueRef.current;
     if (key === 'del') {
-      onChange(value.slice(0, -1));
+      const next = current.slice(0, -1);
+      valueRef.current = next;
+      onChange(next);
       return;
     }
-    if (!key || value.length >= PIN_LENGTH) return;
-    const next = value + key;
+    if (!key || current.length >= length) return;
+    const next = current + key;
+    valueRef.current = next;
     onChange(next);
-    if (next.length === PIN_LENGTH) onComplete(next);
+    if (next.length === length) onComplete(next);
   }
 
   return (

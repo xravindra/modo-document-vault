@@ -7,6 +7,7 @@ import { backupSummary } from '@/lib/backup';
 import { deliverFile } from '@/lib/deliver';
 import { formatWhen } from '@/lib/format';
 import { pickBackupBytes } from '@/lib/pickBackup';
+import { PIN_LENGTH } from '@/lib/pin';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -179,7 +180,13 @@ export default function SettingsScreen() {
           <Text style={styles.label}>
             {pinStep === 'current' ? 'Current PIN' : pinStep === 'next' ? 'New PIN' : 'Confirm new PIN'}
           </Text>
-          <PinPad value={pin} disabled={busy} onChange={setPin} onComplete={(value) => void submitPin(value)} />
+          <PinPad
+            value={pin}
+            length={pinStep === 'current' ? vault.pinLength : PIN_LENGTH}
+            disabled={busy}
+            onChange={setPin}
+            onComplete={(value) => void submitPin(value)}
+          />
           <PressableScale
             onPress={() => {
               setPinStep('idle');

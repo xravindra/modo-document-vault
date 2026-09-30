@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import type { BioMode } from '@/lib/keyStore';
 import { emptyCatalog, type ActivityEvent, type ExtractedField, type Settings, type VaultDocument } from '@/lib/types';
+import { PIN_LENGTH } from '@/lib/pin';
 import { session, VaultError, type AddDocumentInput } from '@/lib/vault';
 
 type Status = 'booting' | 'locked' | 'unlocked';
@@ -10,6 +11,7 @@ type Status = 'booting' | 'locked' | 'unlocked';
 type VaultModel = {
   status: Status;
   hasVault: boolean;
+  pinLength: number;
   biometricsReady: boolean;
   bioMode: BioMode;
   documents: VaultDocument[];
@@ -44,6 +46,7 @@ const VaultContext = createContext<VaultApi | null>(null);
 const initial: VaultModel = {
   status: 'booting',
   hasVault: false,
+  pinLength: PIN_LENGTH,
   biometricsReady: false,
   bioMode: 'off',
   documents: [],
@@ -67,14 +70,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const publish = useCallback(async (status: Status, error: string | null = null) => {
     const snap = session.unlocked ? session.snapshot() : emptyCatalog();
-    const [hasVault, biometricsReady, bioMode] = await Promise.all([
+    const [hasVault, pinLength, biometricsReady, bioMode] = await Promise.all([
       session.hasEnvelope(),
+      session.expectedPinLength(),
       session.biometricsReady(),
       session.bioMode(),
     ]);
     setModel({
       status,
       hasVault,
+      pinLength,
       biometricsReady,
       bioMode,
       documents: snap.documents,

@@ -98,6 +98,13 @@ class VaultSession {
     return (await keys.readEnvelope()) !== null;
   }
 
+  async expectedPinLength() {
+    const envelope = await keys.readEnvelope();
+    if (!envelope) return PIN_LENGTH;
+    if (envelope.pinLength === 4 || envelope.pinLength === 6) return envelope.pinLength;
+    return envelope.iterations === KDF_ITERATIONS ? PIN_LENGTH : 6;
+  }
+
   async biometricsReady() {
     const mode = await keys.readBioMode();
     return mode !== 'off' && (await deviceBiometricsAvailable());
@@ -142,9 +149,6 @@ class VaultSession {
         this.remember('unlock', `Opened after ${failedAttempts} incorrect PIN ${failedAttempts === 1 ? 'attempt' : 'attempts'}`);
       } else {
         this.remember('unlock', 'Vault opened');
-      }
-      if (envelope.iterations > KDF_ITERATIONS) {
-        await keys.writeEnvelope(await createEnvelope(pin, key));
       }
       await this.persist();
     });

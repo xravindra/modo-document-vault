@@ -2,6 +2,7 @@ export type Envelope = {
   salt: string;
   iterations: number;
   sealed: string;
+  pinLength?: number;
 };
 
 export type BackupFile = {

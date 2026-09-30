@@ -194,9 +194,15 @@ export function LockScreen() {
           </View>
         ) : (
           <>
-            <PinDots length={pin.length} shake={shake} />
+            <PinDots length={pin.length} total={vault.pinLength} shake={shake} />
             <Banner message={paused ? `Try again in ${Math.ceil((lockedUntil - now) / 1000)}s.` : message || vault.error} />
-            <PinPad value={pin} disabled={!!busy || paused} onChange={setPin} onComplete={(next) => void submit(next)} />
+            <PinPad
+              value={pin}
+              length={vault.pinLength}
+              disabled={!!busy || paused}
+              onChange={setPin}
+              onComplete={(next) => void submit(next)}
+            />
             {vault.hasVault && vault.biometricsReady ? (
               <PressableScale accessibilityLabel="Unlock with biometrics" onPress={() => void biometric()} style={styles.bio}>
                 <Text style={styles.bioText}>Use Face ID or fingerprint</Text>
