@@ -1,5 +1,11 @@
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+export const MAX_FILE_BYTES = 12 * 1024 * 1024;
+
+export function exceedsFileLimit(size: number | null | undefined): boolean {
+  return typeof size === 'number' && Number.isFinite(size) && size > MAX_FILE_BYTES;
+}
+
 export function bytesToBase64(bytes: Uint8Array): string {
   let output = '';
   for (let index = 0; index < bytes.length; index += 3) {
@@ -47,4 +53,14 @@ export function wipe(bytes: Uint8Array): void {
 export function safeFileName(name: string): string {
   const cleaned = name.replace(/[^\w.\- ]+/g, '').trim();
   return cleaned.length > 0 ? cleaned.slice(0, 80) : 'document';
+}
+
+export function renamedFileName(input: string, previous: string): string {
+  const previousExt = previous.match(/(\.[A-Za-z0-9]{1,8})$/)?.[1] ?? '';
+  const trimmed = input.trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ');
+  const typedExt = trimmed.match(/(\.[A-Za-z0-9]{1,8})$/)?.[1] ?? '';
+  const ext = typedExt || previousExt;
+  const base = trimmed.slice(0, trimmed.length - typedExt.length).replace(/[. ]+$/g, '').trim();
+  if (!base || !ext) return '';
+  return safeFileName(`${base.slice(0, Math.max(1, 80 - ext.length)).trim()}${ext}`);
 }

@@ -51,3 +51,11 @@ export function parseBackup(bytes: Uint8Array): BackupFile {
     files,
   };
 }
+
+export function backupSummary(bytes: Uint8Array): { sealedFiles: number; exportedAt: number } {
+  const backup = parseBackup(bytes);
+  return {
+    sealedFiles: Math.max(0, Object.keys(backup.files).length - 1),
+    exportedAt: backup.exportedAt,
+  };
+}

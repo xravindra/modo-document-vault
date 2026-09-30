@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import * as DocumentPicker from 'expo-document-picker';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
 import { PinPad } from '@/components/PinPad';
+import { backupSummary } from '@/lib/backup';
 import { deliverFile } from '@/lib/deliver';
-import { readSource } from '@/lib/readSource';
+import { formatWhen } from '@/lib/format';
+import { pickBackupBytes } from '@/lib/pickBackup';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -23,6 +24,8 @@ export default function SettingsScreen() {
   const [pinStep, setPinStep] = useState<'idle' | 'current' | 'next' | 'confirm'>('idle');
   const [pin, setPin] = useState('');
   const [nextPin, setNextPin] = useState('');
+  const [pending, setPending] = useState<Uint8Array | null>(null);
+  const [summary, setSummary] = useState<{ sealedFiles: number; exportedAt: number } | null>(null);
 
   async function exportBackup() {
     setBusy(true);
@@ -30,7 +33,7 @@ export default function SettingsScreen() {
     try {
       const bytes = await vault.exportBackup();
       await deliverFile(`modo-vault-${new Date().toISOString().slice(0, 10)}.json`, bytes, 'application/json');
-      setMessage('Encrypted backup is ready. Anyone with that file and your PIN can open the vault.');
+      setMessage('The backup holds every sealed file and the PIN wrap from this device. Keep that file off this phone. Anyone with the file and the PIN can open the vault.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Export failed.');
     } finally {
@@ -38,24 +41,29 @@ export default function SettingsScreen() {
     }
   }
 
-  async function importBackup() {
+  async function chooseBackup() {
     setMessage(null);
-    const picked = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false, base64: false });
-    if (picked.canceled) return;
-    const asset = picked.assets[0];
-    if (!asset) return;
-    setBusy(true);
     try {
-      const bytes = await readSource({
-        uri: asset.uri,
-        base64: asset.base64,
-        file: 'file' in asset ? (asset.file as { arrayBuffer(): Promise<ArrayBuffer> } | undefined) : undefined,
-      });
-      await vault.importBackup(bytes);
+      const bytes = await pickBackupBytes();
+      if (!bytes) return;
+      setSummary(backupSummary(bytes));
+      setPending(bytes);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Import failed.');
-    } finally {
+      setPending(null);
+      setSummary(null);
+      setMessage(error instanceof Error ? error.message : 'That file is not a MODO backup.');
+    }
+  }
+
+  async function confirmRestore() {
+    if (!pending) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await vault.importBackup(pending);
+    } catch (error) {
       setBusy(false);
+      setMessage(error instanceof Error ? error.message : 'Import failed.');
     }
   }
 
@@ -120,7 +128,9 @@ export default function SettingsScreen() {
       <BackButton label="Security" />
       <Kicker>Settings</Kicker>
       <Headline>Hold the vault</Headline>
-      <Quiet>Changing the PIN re-wraps the key. It does not rewrite every file.</Quiet>
+      <Quiet>
+        Sealed files stay in private storage on this device. Export a backup and keep it somewhere else. That file is what you restore if you switch phones or this one dies.
+      </Quiet>
       <Banner message={message} />
 
       <Text style={styles.label}>Auto-lock</Text>
@@ -183,12 +193,35 @@ export default function SettingsScreen() {
         </View>
       )}
 
+      <Text style={styles.label}>This device</Text>
       <PressableScale disabled={busy} onPress={() => void exportBackup()} style={styles.primary}>
         <Text style={styles.primaryText}>{busy ? 'Working…' : 'Export encrypted backup'}</Text>
       </PressableScale>
-      <PressableScale disabled={busy} onPress={() => void importBackup()} style={styles.lineButton}>
-        <Text style={styles.lineText}>Import a backup</Text>
-      </PressableScale>
+      {pending && summary ? (
+        <View style={styles.confirm}>
+          <Text style={styles.confirmText}>
+            Restore {summary.sealedFiles} {summary.sealedFiles === 1 ? 'sealed file' : 'sealed files'} from {formatWhen(summary.exportedAt)}? This replaces the vault stored on this device.
+          </Text>
+          <PressableScale accessibilityLabel="Restore backup on this device" disabled={busy} onPress={() => void confirmRestore()} style={styles.primary}>
+            <Text style={styles.primaryText}>Replace this device</Text>
+          </PressableScale>
+          <PressableScale
+            accessibilityLabel="Cancel restore"
+            disabled={busy}
+            onPress={() => {
+              setPending(null);
+              setSummary(null);
+            }}
+            style={styles.lineButton}
+          >
+            <Text style={styles.lineText}>Cancel</Text>
+          </PressableScale>
+        </View>
+      ) : (
+        <PressableScale disabled={busy} onPress={() => void chooseBackup()} style={styles.lineButton}>
+          <Text style={styles.lineText}>Restore a backup</Text>
+        </PressableScale>
+      )}
       <PressableScale onPress={destroy} style={styles.danger}>
         <Text style={styles.dangerText}>Destroy vault on this device</Text>
       </PressableScale>
@@ -216,6 +249,8 @@ const styles = StyleSheet.create({
   lineText: { color: theme.gold, fontFamily: font.semibold, fontSize: 16 },
   primary: { marginTop: 22, backgroundColor: theme.gold, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   primaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
+  confirm: { marginTop: 8 },
+  confirmText: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
   danger: { marginTop: 8, paddingVertical: 14 },
   dangerText: { color: theme.danger, fontFamily: font.semibold, fontSize: 15 },
 });

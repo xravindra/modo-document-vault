@@ -1,12 +1,14 @@
 import { AESEncryptionKey, randomUUID } from 'expo-crypto';
 
 import { parseBackup, serializeBackup, type BackupFile } from './backup';
-import { base64ToBytes, bytesToBase64 } from './bytes';
+import { isPin, PIN_LENGTH } from './pin';
+import { base64ToBytes, bytesToBase64, exceedsFileLimit, renamedFileName } from './bytes';
 import { deviceBiometricsAvailable, promptBiometrics } from './biometrics';
 import * as blobs from './blobStore';
 import * as keys from './keyStore';
 import {
   createEnvelope,
+  KDF_ITERATIONS,
   openBytes,
   openEnvelope,
   sealBytes,
@@ -15,7 +17,6 @@ import {
 } from './seal';
 import { emptyCatalog, type ActivityType, type Catalog, type DocKind, type Extraction, type Settings, type VaultDocument } from './types';
 const CATALOG = 'catalog.bin';
-const MAX_BYTES = 12 * 1024 * 1024;
 const MAX_ACTIVITY = 180;
 
 export type AddDocumentInput = {
@@ -108,7 +109,7 @@ class VaultSession {
 
   create(pin: string) {
     return this.enqueue(async () => {
-      if (!/^\d{6}$/.test(pin)) throw new VaultError('Use a 6-digit PIN.');
+      if (!isPin(pin)) throw new VaultError(`Use a ${PIN_LENGTH}-digit PIN.`);
       if (await keys.readEnvelope()) throw new VaultError('A vault already exists on this device.');
       const vaultKey = await AESEncryptionKey.generate();
       await keys.writeEnvelope(await createEnvelope(pin, vaultKey));
@@ -123,8 +124,10 @@ class VaultSession {
     return this.enqueue(async () => {
       const envelope = await keys.readEnvelope();
       if (!envelope) throw new VaultError('Create a PIN before unlocking.');
+      let key: AESEncryptionKey;
       try {
-        this.key = await openEnvelope(pin, envelope);
+        key = await openEnvelope(pin, envelope);
+        this.key = key;
       } catch {
         this.key = null;
         throw new VaultError('That PIN does not open this vault.');
@@ -139,6 +142,9 @@ class VaultSession {
         this.remember('unlock', `Opened after ${failedAttempts} incorrect PIN ${failedAttempts === 1 ? 'attempt' : 'attempts'}`);
       } else {
         this.remember('unlock', 'Vault opened');
+      }
+      if (envelope.iterations > KDF_ITERATIONS) {
+        await keys.writeEnvelope(await createEnvelope(pin, key));
       }
       await this.persist();
     });
@@ -177,7 +183,7 @@ class VaultSession {
   addDocument(input: AddDocumentInput) {
     return this.enqueue(async () => {
       const key = this.assertOpen();
-      if (input.bytes.byteLength > MAX_BYTES) {
+      if (exceedsFileLimit(input.bytes.byteLength)) {
         throw new VaultError('Documents larger than 12 MB are not sealed in this version.');
       }
       if (input.bytes.byteLength === 0) throw new VaultError('That file is empty.');
@@ -193,13 +199,47 @@ class VaultSession {
         byteLength: input.bytes.byteLength,
         sha256,
         createdAt: Date.now(),
-        favorite: false,
         extraction: input.extraction,
       };
       this.catalog.documents.unshift(doc);
       this.remember('add', `Sealed ${doc.title}`);
       await this.persist();
       return doc;
+    });
+  }
+
+  renameDocument(id: string, fileName: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      const nextName = renamedFileName(fileName, doc?.fileName ?? '');
+      if (!doc || !nextName || nextName === doc.fileName) return;
+      const title = nextName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || doc.title;
+      this.catalog.documents[index] = { ...doc, fileName: nextName, title };
+      this.remember('rename', `Renamed ${doc.fileName} to ${nextName}`);
+      await this.persist();
+    });
+  }
+
+  saveFields(id: string, fields: { key: string; label: string; value: string; confidence: number }[]) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      const next = fields.flatMap((field) => {
+        const label = field.label.replace(/\s+/g, ' ').trim().slice(0, 80);
+        const value = field.value.replace(/\s+/g, ' ').trim().slice(0, 160);
+        if (!label && !value) return [];
+        return [{ key: field.key, label: label || 'Field', confidence: field.confidence, value }];
+      });
+      this.catalog.documents[index] = {
+        ...doc,
+        extraction: { ...doc.extraction, fields: next },
+      };
+      this.remember('edit', `Saved fields on ${doc.title}`);
+      await this.persist();
     });
   }
 
@@ -244,16 +284,6 @@ class VaultSession {
     });
   }
 
-  toggleFavorite(id: string) {
-    return this.enqueue(async () => {
-      this.assertOpen();
-      const doc = this.catalog.documents.find((item) => item.id === id);
-      if (!doc) return;
-      doc.favorite = !doc.favorite;
-      await this.persist();
-    });
-  }
-
   updateSettings(patch: Partial<Settings>) {
     return this.enqueue(async () => {
       this.assertOpen();
@@ -276,7 +306,7 @@ class VaultSession {
   changePin(next: string) {
     return this.enqueue(async () => {
       const key = this.assertOpen();
-      if (!/^\d{6}$/.test(next)) throw new VaultError('Use a 6-digit PIN.');
+      if (!isPin(next)) throw new VaultError(`Use a ${PIN_LENGTH}-digit PIN.`);
       await keys.writeEnvelope(await createEnvelope(next, key));
       this.remember('pin-change', 'PIN changed');
       await this.persist();
@@ -313,12 +343,15 @@ class VaultSession {
       this.assertOpen();
       const envelope = await keys.readEnvelope();
       if (!envelope) throw new VaultError('No vault is stored on this device.');
+      this.remember('export', 'Exported an encrypted backup');
+      await this.persist();
       const names = await blobs.listBlobs();
       const files: Record<string, string> = {};
       for (const name of names) {
         const bytes = await blobs.readBlob(name);
         if (bytes) files[name] = bytesToBase64(bytes);
       }
+      if (!files['catalog.bin']) throw new VaultError('The local catalog could not be read.');
       const backup: BackupFile = {
         format: 'modo-vault',
         version: 1,
@@ -326,8 +359,6 @@ class VaultSession {
         envelope,
         files,
       };
-      this.remember('export', 'Exported an encrypted backup');
-      await this.persist();
       return serializeBackup(backup);
     });
   }
@@ -335,9 +366,20 @@ class VaultSession {
   importBackup(bytes: Uint8Array) {
     return this.enqueue(async () => {
       const backup = parseBackup(bytes);
-      await blobs.clearBlobs();
+      const decoded: Array<[string, Uint8Array]> = [];
       for (const [name, encoded] of Object.entries(backup.files)) {
-        await blobs.writeBlob(name, base64ToBytes(encoded));
+        try {
+          decoded.push([name, base64ToBytes(encoded)]);
+        } catch {
+          throw new VaultError('This backup file is damaged.');
+        }
+      }
+      for (const [name, data] of decoded) {
+        await blobs.writeBlob(name, data);
+      }
+      const keep = new Set(decoded.map(([name]) => name));
+      for (const name of await blobs.listBlobs()) {
+        if (!keep.has(name)) await blobs.removeBlob(name);
       }
       await keys.writeEnvelope(backup.envelope);
       await keys.clearBiometricKey();

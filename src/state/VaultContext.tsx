@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState } from 'react-native';
 
 import type { BioMode } from '@/lib/keyStore';
-import { emptyCatalog, type ActivityEvent, type Settings, type VaultDocument } from '@/lib/types';
+import { emptyCatalog, type ActivityEvent, type ExtractedField, type Settings, type VaultDocument } from '@/lib/types';
 import { session, VaultError, type AddDocumentInput } from '@/lib/vault';
 
 type Status = 'booting' | 'locked' | 'unlocked';
@@ -24,8 +24,9 @@ type VaultApi = VaultModel & {
   unlockWithBiometrics: () => Promise<void>;
   lock: () => Promise<void>;
   addDocument: (input: AddDocumentInput) => Promise<VaultDocument>;
+  renameDocument: (id: string, fileName: string) => Promise<void>;
+  saveFields: (id: string, fields: ExtractedField[]) => Promise<void>;
   removeDocument: (id: string) => Promise<void>;
-  toggleFavorite: (id: string) => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   verifyPin: (pin: string) => Promise<boolean>;
   changePin: (next: string) => Promise<void>;
@@ -145,8 +146,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await publish('unlocked');
         return doc;
       },
+      renameDocument: (id, fileName) => run(() => session.renameDocument(id, fileName), 'unlocked'),
+      saveFields: (id, fields) => run(() => session.saveFields(id, fields), 'unlocked'),
       removeDocument: (id) => run(() => session.removeDocument(id), 'unlocked'),
-      toggleFavorite: (id) => run(() => session.toggleFavorite(id), 'unlocked'),
       updateSettings: (patch) => run(() => session.updateSettings(patch), 'unlocked'),
       verifyPin: (pin) => session.verifyPin(pin),
       changePin: (next) => run(() => session.changePin(next), 'unlocked'),

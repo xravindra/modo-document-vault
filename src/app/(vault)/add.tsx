@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 
+import { FieldRow } from '@/components/FieldRow';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
 import { VaultMark } from '@/components/VaultMark';
 import { extractDocument, suggestedKind } from '@/lib/extract';
@@ -39,6 +40,9 @@ export default function AddScreen() {
     setDraft(next);
     setPhase('reading');
     setMessage(null);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 16);
+    });
     try {
       const result = await extractDocument(next.bytes, next.mimeType, next.fileName);
       const kind = suggestedKind(next.kind, result.text);
@@ -79,6 +83,7 @@ export default function AddScreen() {
         uri: asset.uri,
         base64: asset.base64,
         file: asset.file,
+        size: asset.size,
       });
       setDraft({
         bytes,
@@ -102,13 +107,12 @@ export default function AddScreen() {
       setMessage(camera ? 'Camera permission is required to photograph a document.' : 'Photo permission is required to choose an image.');
       return;
     }
-    const result = camera
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.5, exif: false, base64: false };
+    const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     try {
-      const bytes = await readSource({ uri: asset.uri, base64: asset.base64 });
+      const bytes = await readSource({ uri: asset.uri, base64: asset.base64, size: asset.fileSize });
       const fileName = asset.fileName ?? `photo-${Date.now()}.jpg`;
       setDraft({
         bytes,
@@ -222,10 +226,7 @@ export default function AddScreen() {
             <Text style={styles.note}>No structured fields were found. The file can still be sealed.</Text>
           ) : (
             extraction.fields.map((field) => (
-              <View key={`${field.key}-${field.value}`} style={styles.field}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                <Text style={styles.fieldValue}>{field.value}</Text>
-              </View>
+              <FieldRow key={`${field.key}-${field.value}`} label={field.label} value={field.value} />
             ))
           )}
           <PressableScale disabled={busy} onPress={() => void seal()} style={styles.primary}>
@@ -281,7 +282,4 @@ const styles = StyleSheet.create({
   reading: { alignItems: 'center', marginTop: 24 },
   readingText: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
   note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
-  field: { marginTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.line },
-  fieldLabel: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 1 },
-  fieldValue: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 22, marginTop: 4 },
 });

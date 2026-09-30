@@ -3,6 +3,7 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 
 import { PressableScale } from '@/components/ui';
 import { hapticTick } from '@/lib/haptics';
+import { PIN_LENGTH } from '@/lib/pin';
 import { font, theme } from '@/theme';
 
 const ROWS = [
@@ -16,7 +17,7 @@ export function PinDots({ length, shake }: { length: number; shake: SharedValue<
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   return (
     <Animated.View style={[styles.dots, style]}>
-      {Array.from({ length: 6 }, (_, index) => (
+      {Array.from({ length: PIN_LENGTH }, (_, index) => (
         <View key={index} style={[styles.dot, index < length ? styles.dotOn : null]} />
       ))}
     </Animated.View>
@@ -41,10 +42,10 @@ export function PinPad({
       onChange(value.slice(0, -1));
       return;
     }
-    if (!key || value.length >= 6) return;
+    if (!key || value.length >= PIN_LENGTH) return;
     const next = value + key;
     onChange(next);
-    if (next.length === 6) onComplete(next);
+    if (next.length === PIN_LENGTH) onComplete(next);
   }
 
   return (

@@ -10,6 +10,8 @@ const LABELS: Record<string, string> = {
   unlock: 'Opened',
   add: 'Sealed',
   view: 'Viewed',
+  rename: 'Renamed',
+  edit: 'Saved',
   delete: 'Removed',
   export: 'Exported',
   import: 'Imported',

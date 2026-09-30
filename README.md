@@ -4,13 +4,14 @@ A local-first document vault for web, Android, and iOS. One Expo (JavaScript) co
 
 ## What it does
 
-- Create a 6-digit PIN. The PIN wraps a random AES-256-GCM vault key with PBKDF2-HMAC-SHA256 (210,000 rounds). The PIN is not stored.
+- Create a 4-digit PIN. The PIN wraps a random AES-256-GCM vault key with PBKDF2-HMAC-SHA256 (5,000 rounds; the device crypto is used when it can do this). The PIN is not stored. A vault saved with more rounds is rewritten to this count the next time it opens.
 - Seal PDFs, images, and text files. On a phone the ciphertext lives in the app documents folder. In the browser it lives in IndexedDB. The wrapped key lives in the iOS Keychain or Android Keystore, and in local storage on the web.
 - Read digital text out of PDFs, including compressed text streams. In the browser, photos can be recognized with an on-device English text engine. Structured fields (passport numbers, dates, names, and similar labels) are pulled out of that text for you to review before sealing.
 - Check integrity on open: the GCM tag must verify, and the SHA-256 of the file must match the hash saved at seal time.
-- Optional Face ID or fingerprint on iOS and Android. Lock when the app leaves the foreground, export an encrypted backup, or destroy the vault on this device.
+- Optional Face ID or fingerprint on iOS and Android. Lock when the app leaves the foreground, or destroy the vault on this device.
+- Everything stays in private storage on this device. Export an encrypted backup and keep that file somewhere else. If you switch phones, or this phone dies, restore the file from the lock screen and enter the same PIN.
 
-A 6-digit PIN stops someone holding the phone. It is not a strong password if a backup file is copied off the device. The backup opens with the same PIN.
+A 4-digit PIN stops someone holding the phone. It is not a strong password if a backup file is copied off the device. The backup opens with the same PIN.
 
 ## Run it
 
@@ -55,7 +56,6 @@ Face ID is limited inside Expo Go. A preview, development, or store build binds 
 ## Checks
 
 ```bash
-npm test
 npm run typecheck
 ```
 

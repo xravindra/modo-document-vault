@@ -16,10 +16,7 @@ function Card({ doc }: { doc: VaultDocument }) {
     >
       <View style={styles.rule} />
       <View style={styles.copy}>
-        <Text style={styles.kind}>
-          {kindLabel(doc.kind)}
-          {doc.favorite ? '  ·  Kept' : ''}
-        </Text>
+        <Text style={styles.kind}>{kindLabel(doc.kind)}</Text>
         <Text style={styles.title}>{doc.title}</Text>
         <Text style={styles.meta}>
           {formatWhen(doc.createdAt)} · {formatBytes(doc.byteLength)} · {engineLabel(doc.extraction.engine)}

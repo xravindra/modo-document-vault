@@ -1,3 +1,3 @@
-export function PdfFrame(_props: { uri: string }) {
+export function PdfFrame(_props: { uri: string; ratio: number }) {
   return null;
 }

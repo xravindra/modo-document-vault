@@ -32,7 +32,6 @@ export type VaultDocument = {
   byteLength: number;
   sha256: string;
   createdAt: number;
-  favorite: boolean;
   extraction: Extraction;
 };
 
@@ -41,6 +40,8 @@ export type ActivityType =
   | 'unlock'
   | 'add'
   | 'view'
+  | 'rename'
+  | 'edit'
   | 'delete'
   | 'export'
   | 'import'

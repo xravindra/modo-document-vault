@@ -1,5 +1,7 @@
 import type { DocKind, ExtractedField } from './types';
 
+const MAX_FIELDS = 40;
+
 const LABELS: { key: string; label: string; pattern: RegExp }[] = [
   { key: 'surname', label: 'Surname', pattern: /^surname\s*[:\-]\s*(.+)$/i },
   { key: 'given', label: 'Given names', pattern: /^given names?\s*[:\-]\s*(.+)$/i },
@@ -13,11 +15,62 @@ const LABELS: { key: string; label: string; pattern: RegExp }[] = [
   { key: 'account', label: 'Account', pattern: /^(?:account|acct)\s*(?:no\.?|number)?\s*[:\-]\s*(.+)$/i },
 ];
 
+const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const PHONE =
+  /(?:\+\d{1,3}[\s().-]*)(?:\d[\s().-]*){7,14}\d|\(\d{2,4}\)[\s.-]*\d{3,4}[\s.-]*\d{3,4}|\b\d{2,4}[\s.-]\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{2,4})?\b/g;
+const DATE =
+  /\b(?:\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/.]\d{1,2}[/.]\d{4})\b/gi;
+const URL = /\bhttps?:\/\/[^\s<>"']+/gi;
+const IBAN = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g;
+const AMOUNT = /[$€£]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b(?:USD|EUR|GBP|INR|CAD|AUD)\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi;
+const LABELED = /^([\p{L}][\p{L}\p{N}&/'(). ]{0,42}?)\s*(?::|：|\s[-–]\s)\s*(.+)$/u;
+const SKIP_LABEL = /^(?:page|pages|note|notes|see|the|and|or|to|a|an|of|by|for|with)$/i;
+
+function clean(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().replace(/[.,;]+$/g, '');
+}
+
+function readable(value: string): boolean {
+  return value.length >= 2 && value.length <= 120 && /[\p{L}\p{N}]/u.test(value);
+}
+
+function captured(fields: ExtractedField[], value: string): boolean {
+  const needle = value.toLowerCase();
+  return fields.some((item) => {
+    const hay = item.value.toLowerCase();
+    if (hay === needle) return true;
+    return needle.length >= 6 && hay.includes(needle);
+  });
+}
+
 function pushField(fields: ExtractedField[], field: ExtractedField) {
-  const value = field.value.replace(/\s+/g, ' ').trim();
-  if (value.length < 2 || value.length > 120) return;
-  if (fields.some((item) => item.key === field.key || item.value.toLowerCase() === value.toLowerCase())) return;
-  fields.push({ ...field, value });
+  if (fields.length >= MAX_FIELDS) return;
+  const value = clean(field.value);
+  if (!readable(value) || captured(fields, value)) return;
+  const sameKey = new RegExp(`^${field.key}(?:-\\d+)?$`);
+  const repeats = fields.filter((item) => sameKey.test(item.key)).length;
+  const key = repeats === 0 ? field.key : `${field.key}-${repeats + 1}`;
+  const label = repeats === 0 ? field.label : `${field.label} ${repeats + 1}`;
+  fields.push({ ...field, key, label, value });
+}
+
+function matches(text: string, pattern: RegExp): string[] {
+  return [...text.matchAll(pattern)].map((match) => match[0]);
+}
+
+function collect(fields: ExtractedField[], values: string[], key: string, label: string, confidence: number) {
+  for (const value of values) {
+    pushField(fields, { key, label, value, confidence });
+  }
+}
+
+function phoneNumber(value: string): string | null {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) return null;
+  if (!trimmed.startsWith('+') && !/[\s().-]/.test(trimmed)) return null;
+  if (/^\d{1,2}[/.]\d{1,2}[/.]\d{2,4}$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 function readMrz(lines: string[], fields: ExtractedField[]) {
@@ -38,6 +91,27 @@ function readMrz(lines: string[], fields: ExtractedField[]) {
   }
 }
 
+function readLabeled(line: string, fields: ExtractedField[]) {
+  const match = line.match(LABELED);
+  if (!match?.[1] || !match[2]) return;
+  const label = clean(match[1]);
+  if (!label || SKIP_LABEL.test(label) || label.split(' ').length > 6) return;
+  const raw = clean(match[2]);
+  if (!readable(raw) || raw.split(' ').length > 8) return;
+  const entities = [
+    ...matches(raw, EMAIL),
+    ...matches(raw, URL),
+    ...matches(raw, IBAN),
+    ...matches(raw, AMOUNT),
+    ...matches(raw, DATE),
+    ...matches(raw, PHONE).filter((item) => phoneNumber(item)),
+  ];
+  if (entities.length > 1) return;
+  const value = entities.length === 1 && raw.toLowerCase().includes(entities[0].toLowerCase()) ? entities[0] : raw;
+  const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
+  pushField(fields, { key, label, value, confidence: 0.84 });
+}
+
 export function parseFields(text: string): ExtractedField[] {
   const fields: ExtractedField[] = [];
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -53,22 +127,25 @@ export function parseFields(text: string): ExtractedField[] {
 
   readMrz(lines, fields);
 
-  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  if (email?.[0]) pushField(fields, { key: 'email', label: 'Email', value: email[0], confidence: 0.8 });
-
-  const iban = text.match(/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/);
-  if (iban?.[0]) pushField(fields, { key: 'iban', label: 'IBAN', value: iban[0], confidence: 0.74 });
-
   for (const line of lines) {
-    if (!/total|amount|balance|premium/i.test(line)) continue;
-    const amount = line.match(/[$€£]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})|\b\d{1,3}(?:,\d{3})*\.\d{2}\b/);
-    if (amount?.[0]) {
-      pushField(fields, { key: 'amount', label: 'Amount', value: amount[0], confidence: 0.7 });
-      break;
-    }
+    if (/^[A-Z0-9<]{30,44}$/.test(line)) continue;
+    readLabeled(line, fields);
   }
 
-  return fields.slice(0, 12);
+  collect(fields, matches(text, EMAIL), 'email', 'Email', 0.8);
+  collect(
+    fields,
+    matches(text, PHONE).map(phoneNumber).filter((item): item is string => !!item),
+    'phone',
+    'Phone',
+    0.78,
+  );
+  collect(fields, matches(text, DATE), 'date', 'Date', 0.76);
+  collect(fields, matches(text, URL).map((item) => item.replace(/[.,;)]+$/g, '')), 'url', 'Link', 0.8);
+  collect(fields, matches(text, IBAN), 'iban', 'IBAN', 0.74);
+  collect(fields, matches(text, AMOUNT), 'amount', 'Amount', 0.7);
+
+  return fields;
 }
 
 export function inferKind(text: string): DocKind {

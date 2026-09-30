@@ -3,6 +3,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router, type Href } from 'expo-router';
 
 import { Headline, Kicker, PressableScale, Quiet, Screen, usePrefersReducedMotion } from '@/components/ui';
+import { KDF_ITERATIONS } from '@/lib/seal';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -25,7 +26,7 @@ export default function SecurityScreen() {
   const pillars = [
     {
       title: 'Confidentiality',
-      body: 'Every file and the catalog are AES-256-GCM. A random vault key does the sealing. Your PIN only wraps that key with PBKDF2-HMAC-SHA256, 210,000 rounds. The PIN is never stored.',
+      body: `Every file and the catalog are AES-256-GCM. A random vault key does the sealing. Your PIN only wraps that key with PBKDF2-HMAC-SHA256, ${KDF_ITERATIONS.toLocaleString('en-US')} rounds, using the device crypto when it can. The PIN is never stored.`,
     },
     {
       title: 'Integrity',
@@ -37,7 +38,7 @@ export default function SecurityScreen() {
     },
     {
       title: 'Availability',
-      body: 'The vault works offline. An encrypted backup can be exported and imported. The backup opens with the same PIN.',
+      body: 'Sealed files stay in private storage on this device. Nothing is uploaded. Export a backup and keep that file off the phone. On a new device, or if this phone is replaced, restore that file from the lock screen and enter the same PIN.',
     },
     {
       title: 'Least privilege',

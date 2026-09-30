@@ -6,7 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PinDots, PinPad } from '@/components/PinPad';
 import { Banner, PressableScale } from '@/components/ui';
 import { VaultMark } from '@/components/VaultMark';
+import { backupSummary } from '@/lib/backup';
+import { formatWhen } from '@/lib/format';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
+import { pickBackupBytes } from '@/lib/pickBackup';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -22,6 +25,8 @@ export function LockScreen() {
   const [failures, setFailures] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [pending, setPending] = useState<Uint8Array | null>(null);
+  const [summary, setSummary] = useState<{ sealedFiles: number; exportedAt: number } | null>(null);
   const shake = useSharedValue(0);
   const paused = lockedUntil > now;
 
@@ -94,6 +99,46 @@ export function LockScreen() {
     }
   }
 
+  async function chooseBackup() {
+    if (busy) return;
+    vault.clearError();
+    setMessage(null);
+    try {
+      const bytes = await pickBackupBytes();
+      if (!bytes) return;
+      setSummary(backupSummary(bytes));
+      setPending(bytes);
+    } catch (error) {
+      setPending(null);
+      setSummary(null);
+      setMessage(error instanceof Error ? error.message : 'That file is not a MODO backup.');
+    }
+  }
+
+  async function confirmRestore() {
+    if (!pending || busy) return;
+    setBusy('Restoring onto this device…');
+    setMessage(null);
+    try {
+      await vault.importBackup(pending);
+      setPending(null);
+      setSummary(null);
+      setStep('enter');
+      setFirst('');
+      setPin('');
+      setMessage('Restored on this device. Enter the PIN from the phone that made the backup.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not restore the backup.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function cancelRestore() {
+    setPending(null);
+    setSummary(null);
+  }
+
   async function biometric() {
     if (busy || paused) return;
     setBusy('Waiting for biometrics…');
@@ -108,10 +153,18 @@ export function LockScreen() {
     }
   }
 
-  const title = !vault.hasVault ? (step === 'confirm' ? 'Confirm the PIN' : 'Choose a PIN') : 'Welcome back';
-  const subtitle = !vault.hasVault
-    ? 'Six digits wrap the vault key. MODO does not store the PIN. A short PIN stops someone holding the phone. It is not a strong password if a backup leaves the device.'
-    : 'Enter the PIN that opens this device’s vault.';
+  const title = pending
+    ? 'Restore a backup'
+    : !vault.hasVault
+      ? step === 'confirm'
+        ? 'Confirm the PIN'
+        : 'Choose a PIN'
+      : 'Welcome back';
+  const subtitle = pending
+    ? 'This writes the backup into private storage on this device. The PIN from the phone that made it still opens the vault.'
+    : !vault.hasVault
+      ? 'Four digits wrap the vault key. Files stay on this device. MODO does not store the PIN. Keep an exported backup somewhere else in case this phone is replaced.'
+      : 'Enter the PIN for the vault stored on this device. A restored backup uses the PIN from the phone that created it.';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
@@ -121,14 +174,45 @@ export function LockScreen() {
         <Text style={styles.kicker}>MODO</Text>
         <Text style={[styles.title, compact ? styles.titleCompact : null]}>{title}</Text>
         <Text style={styles.subtitle}>{busy || subtitle}</Text>
-        <PinDots length={pin.length} shake={shake} />
-        <Banner message={paused ? `Try again in ${Math.ceil((lockedUntil - now) / 1000)}s.` : message || vault.error} />
-        <PinPad value={pin} disabled={!!busy || paused} onChange={setPin} onComplete={(next) => void submit(next)} />
-        {vault.hasVault && vault.biometricsReady ? (
-          <PressableScale accessibilityLabel="Unlock with biometrics" onPress={() => void biometric()} style={styles.bio}>
-            <Text style={styles.bioText}>Use Face ID or fingerprint</Text>
-          </PressableScale>
-        ) : null}
+        {pending && summary ? (
+          <View style={styles.restore}>
+            <Text style={styles.restoreTitle}>
+              {summary.sealedFiles} {summary.sealedFiles === 1 ? 'sealed file' : 'sealed files'}
+            </Text>
+            <Text style={styles.restoreMeta}>Exported {formatWhen(summary.exportedAt)}</Text>
+            <PressableScale
+              accessibilityLabel={vault.hasVault ? 'Replace this device' : 'Restore on this device'}
+              disabled={!!busy}
+              onPress={() => void confirmRestore()}
+              style={styles.restoreButton}
+            >
+              <Text style={styles.restoreButtonText}>{vault.hasVault ? 'Replace this device' : 'Restore on this device'}</Text>
+            </PressableScale>
+            <PressableScale accessibilityLabel="Cancel restore" disabled={!!busy} onPress={cancelRestore} style={styles.bio}>
+              <Text style={styles.bioText}>Cancel</Text>
+            </PressableScale>
+          </View>
+        ) : (
+          <>
+            <PinDots length={pin.length} shake={shake} />
+            <Banner message={paused ? `Try again in ${Math.ceil((lockedUntil - now) / 1000)}s.` : message || vault.error} />
+            <PinPad value={pin} disabled={!!busy || paused} onChange={setPin} onComplete={(next) => void submit(next)} />
+            {vault.hasVault && vault.biometricsReady ? (
+              <PressableScale accessibilityLabel="Unlock with biometrics" onPress={() => void biometric()} style={styles.bio}>
+                <Text style={styles.bioText}>Use Face ID or fingerprint</Text>
+              </PressableScale>
+            ) : null}
+            <PressableScale
+              accessibilityLabel={vault.hasVault ? 'Replace from a backup' : 'Restore a backup'}
+              disabled={!!busy || paused}
+              onPress={() => void chooseBackup()}
+              style={styles.bio}
+            >
+              <Text style={styles.bioText}>{vault.hasVault ? 'Replace from a backup' : 'Restore a backup'}</Text>
+            </PressableScale>
+          </>
+        )}
+        {pending ? <Banner message={message || vault.error} /> : null}
         <Text style={styles.footer}>AES-256-GCM · on this device · offline</Text>
       </View>
     </View>
@@ -179,6 +263,19 @@ const styles = StyleSheet.create({
   },
   bio: { marginTop: 14, alignItems: 'center', padding: 12 },
   bioText: { color: theme.gold, fontFamily: font.medium, fontSize: 15 },
+  restore: { marginTop: 18, alignItems: 'center' },
+  restoreTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28, textAlign: 'center' },
+  restoreMeta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 6, textAlign: 'center' },
+  restoreButton: {
+    marginTop: 16,
+    backgroundColor: theme.gold,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  restoreButtonText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   footer: {
     color: theme.paperFaint,
     fontFamily: font.medium,

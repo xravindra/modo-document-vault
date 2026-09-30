@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
+import { FieldRow } from '@/components/FieldRow';
 import { PdfFrame } from '@/components/PdfFrame';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Screen } from '@/components/ui';
-import { deliverFile, previewUri } from '@/lib/deliver';
-import { engineLabel, formatBytes } from '@/lib/format';
-import { kindLabel } from '@/lib/types';
+import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
+import { engineLabel, formatBytes, shareSummary } from '@/lib/format';
+import { pdfPageRatio } from '@/lib/pdfText';
+import { kindLabel, type ExtractedField } from '@/lib/types';
 import { session } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -22,9 +24,17 @@ export default function DocumentScreen() {
   const [mime, setMime] = useState('');
   const [armed, setArmed] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [imageRatio, setImageRatio] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [fields, setFields] = useState<ExtractedField[]>([]);
+  const [saving, setSaving] = useState(false);
+  const fieldSeq = useRef(0);
 
   useEffect(() => {
     if (!id) return;
+    setImageRatio(null);
+    setRenaming(false);
     let revoke: () => void = () => undefined;
     let live = true;
     (async () => {
@@ -55,14 +65,108 @@ export default function DocumentScreen() {
     };
   }, [id, vault.refresh]);
 
-  async function exportCopy() {
+  useEffect(() => {
+    if (!preview || !mime.startsWith('image/')) return;
+    let live = true;
+    Image.getSize(
+      preview,
+      (width, height) => {
+        if (live && width > 0 && height > 0) setImageRatio(width / height);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [preview, mime]);
+
+  useEffect(() => {
+    setFields(doc ? doc.extraction.fields.map((field) => ({ ...field })) : []);
+  }, [doc?.id, doc?.extraction]);
+
+  function beginRename() {
+    if (!doc || renaming) return;
+    setDraftName(doc.fileName);
+    setRenaming(true);
+  }
+
+  async function commitRename() {
+    if (!doc) return;
+    const next = draftName.trim();
+    setRenaming(false);
+    if (!next || next === doc.fileName) return;
+    setMessage(null);
+    try {
+      await vault.renameDocument(doc.id, next);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not rename this document.');
+    }
+  }
+
+  async function download() {
     if (!doc || !plain || integrity !== 'ok') return;
     setMessage(null);
     try {
       await deliverFile(doc.fileName, plain, doc.mimeType);
-      setMessage('A readable copy left the vault. The sealed original is unchanged.');
+      setMessage('Downloaded. The sealed original is unchanged.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not export a copy.');
+      setMessage(error instanceof Error ? error.message : 'Could not download this document.');
+    }
+  }
+
+  async function shareFile() {
+    if (!doc || !plain || integrity !== 'ok') return;
+    setMessage(null);
+    try {
+      const outcome = await shareDocument({
+        title: doc.title,
+        text: doc.fileName,
+        file: { fileName: doc.fileName, mime: doc.mimeType, bytes: plain },
+      });
+      if (outcome === 'downloaded') {
+        setMessage('The file was downloaded because this browser cannot share it directly.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not share this file.');
+    }
+  }
+
+  function addField() {
+    fieldSeq.current += 1;
+    setFields((current) => [
+      ...current,
+      { key: `custom-${fieldSeq.current}`, label: '', value: '', confidence: 1 },
+    ]);
+  }
+
+  async function saveFields() {
+    if (!doc || saving) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await vault.saveFields(doc.id, fields);
+      setMessage('Saved the extracted fields. The sealed file is unchanged.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save these fields.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function shareDetails() {
+    if (!doc || fields.length === 0) return;
+    setMessage(null);
+    try {
+      const outcome = await shareDocument({
+        title: doc.title,
+        text: shareSummary(doc.title, fields),
+        file: null,
+      });
+      if (outcome === 'downloaded') {
+        setMessage('The extracted details were copied so you can paste them into a message.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not share this document.');
     }
   }
 
@@ -94,9 +198,29 @@ export default function DocumentScreen() {
       <BackButton label="Back" />
       <Kicker>{kindLabel(doc.kind)}</Kicker>
       <Headline>{doc.title}</Headline>
-      <Text style={styles.meta}>
-        {doc.fileName} · {formatBytes(doc.byteLength)} · {engineLabel(doc.extraction.engine)}
-      </Text>
+      <View style={styles.metaRow}>
+        {renaming ? (
+          <TextInput
+            accessibilityLabel="File name"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus
+            onBlur={() => void commitRename()}
+            onChangeText={setDraftName}
+            onSubmitEditing={() => void commitRename()}
+            style={styles.fileInput}
+            value={draftName}
+          />
+        ) : (
+          <PressableScale accessibilityLabel={`Rename ${doc.fileName}`} onPress={beginRename} style={styles.fileNameHit}>
+            <Text style={styles.fileName}>{doc.fileName}</Text>
+          </PressableScale>
+        )}
+        <Text style={styles.meta}>
+          {' · '}
+          {formatBytes(doc.byteLength)} · {engineLabel(doc.extraction.engine)}
+        </Text>
+      </View>
       <View style={[styles.badge, integrity === 'failed' ? styles.badgeBad : null]}>
         <Text style={styles.badgeText}>
           {integrity === 'checking'
@@ -108,22 +232,66 @@ export default function DocumentScreen() {
       </View>
       <Banner message={message} />
       {preview && mime.startsWith('image/') ? (
-        <Image source={{ uri: preview }} style={styles.image} accessibilityLabel="Document preview" />
+        <Image
+          accessibilityLabel="Document preview"
+          resizeMode="contain"
+          source={{ uri: preview }}
+          style={[styles.preview, imageRatio ? { aspectRatio: imageRatio } : styles.imagePending]}
+        />
       ) : null}
-      {preview && mime.includes('pdf') ? <PdfFrame uri={preview} /> : null}
+      {preview && mime.includes('pdf') && plain ? <PdfFrame uri={preview} ratio={pdfPageRatio(plain)} /> : null}
       <Text style={styles.note}>{doc.extraction.note}</Text>
-      {doc.extraction.fields.map((field) => (
-        <View key={`${field.key}-${field.value}`} style={styles.field}>
-          <Text style={styles.fieldLabel}>{field.label}</Text>
-          <Text style={styles.fieldValue}>{field.value}</Text>
-        </View>
+      {fields.map((field, index) => (
+        <FieldRow
+          key={field.key}
+          label={field.label}
+          onChangeLabel={(label) => {
+            setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, label } : item)));
+          }}
+          onChangeValue={(value) => {
+            setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, value } : item)));
+          }}
+          onDelete={() => {
+            setFields((current) => current.filter((_, itemIndex) => itemIndex !== index));
+          }}
+          value={field.value}
+        />
       ))}
       <View style={styles.actions}>
-        <PressableScale onPress={() => void vault.toggleFavorite(doc.id)} style={styles.secondary}>
-          <Text style={styles.secondaryText}>{doc.favorite ? 'Unmark' : 'Keep'}</Text>
+        <PressableScale
+          accessibilityLabel={`Share file ${doc.fileName}`}
+          disabled={!plain || integrity !== 'ok'}
+          onPress={() => void shareFile()}
+          style={styles.secondary}
+        >
+          <Text style={styles.secondaryText}>Share</Text>
         </PressableScale>
-        <PressableScale onPress={() => void exportCopy()} style={styles.secondary}>
-          <Text style={styles.secondaryText}>Readable copy</Text>
+        <PressableScale
+          accessibilityLabel="Save extracted fields"
+          disabled={saving}
+          onPress={() => void saveFields()}
+          style={styles.secondary}
+        >
+          <Text style={styles.secondaryText}>{saving ? 'Saving…' : 'Save'}</Text>
+        </PressableScale>
+        <PressableScale
+          accessibilityLabel={`Download ${doc.title}`}
+          disabled={!plain || integrity !== 'ok'}
+          onPress={() => void download()}
+          style={styles.download}
+        >
+          <Text style={styles.downloadText}>Download</Text>
+        </PressableScale>
+        <PressableScale accessibilityLabel="Add a field" onPress={addField} style={styles.secondary}>
+          <Text style={styles.secondaryText}>Add a field</Text>
+        </PressableScale>
+        {fields.length > 0 ? (
+          <PressableScale accessibilityLabel={`Share details from ${doc.title}`} onPress={() => void shareDetails()} style={styles.secondary}>
+            <Text style={styles.secondaryText}>Share details</Text>
+          </PressableScale>
+        ) : null}
+        <PressableScale accessibilityLabel={`Remove ${doc.title} from vault`} onPress={() => setArmed(true)} style={styles.remove}>
+          <Text style={styles.removeText}>Remove from vault</Text>
         </PressableScale>
       </View>
       {armed ? (
@@ -143,17 +311,30 @@ export default function DocumentScreen() {
             <Text style={styles.dangerText}>{removing ? 'Removing…' : 'Delete from this device'}</Text>
           </PressableScale>
         </View>
-      ) : (
-        <PressableScale accessibilityLabel={`Remove ${doc.title} from vault`} onPress={() => setArmed(true)} style={styles.remove}>
-          <Text style={styles.removeText}>Remove from vault</Text>
-        </PressableScale>
-      )}
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 8 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 },
+  fileNameHit: { paddingVertical: 2 },
+  fileName: {
+    color: theme.paper,
+    fontFamily: font.body,
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14 },
+  fileInput: {
+    minWidth: 180,
+    color: theme.paper,
+    fontFamily: font.body,
+    fontSize: 14,
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.gold,
+  },
   badge: {
     marginTop: 16,
     borderRadius: 14,
@@ -162,23 +343,50 @@ const styles = StyleSheet.create({
   },
   badgeBad: { backgroundColor: 'rgba(224, 139, 122, 0.14)' },
   badgeText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  image: { width: '100%', height: 280, borderRadius: 18, marginTop: 16, backgroundColor: theme.inkSoft },
+  preview: {
+    alignSelf: 'stretch',
+    marginHorizontal: -22,
+    marginVertical: 0,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+  },
+  imagePending: { height: 220 },
   note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
-  field: { marginTop: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.line },
-  fieldLabel: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
-  fieldValue: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 24, marginTop: 4 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 22 },
   secondary: {
     flex: 1,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.line,
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  secondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
-  remove: { marginTop: 28, paddingVertical: 12, alignItems: 'center' },
-  removeText: { color: theme.paperFaint, fontFamily: font.medium, fontSize: 14 },
+  secondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 13, textAlign: 'center' },
+  download: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: theme.gold,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadText: { color: theme.ink, fontFamily: font.semibold, fontSize: 13, textAlign: 'center' },
+  remove: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(224, 139, 122, 0.45)',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeText: { color: theme.danger, fontFamily: font.semibold, fontSize: 13, textAlign: 'center' },
   confirm: { marginTop: 28 },
   confirmText: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
   cancel: {

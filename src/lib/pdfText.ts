@@ -3,7 +3,7 @@ import { inflate } from 'pako';
 const STREAM = ascii('stream');
 const ENDSTREAM = ascii('endstream');
 const FLATE = ascii('FlateDecode');
-const MAX_STREAM = 5_000_000;
+const MAX_STREAM = 1_500_000;
 const MAX_TEXT = 200_000;
 
 function ascii(value: string): Uint8Array {
@@ -344,7 +344,7 @@ function streamPayload(data: Uint8Array, marker: number): { start: number; end: 
   if (data[start] === 13 && data[start + 1] === 10) start += 2;
   else if (data[start] === 10 || data[start] === 13) start += 1;
   const end = indexOfBytes(data, ENDSTREAM, start);
-  if (end < 0 || end - start > MAX_STREAM) return null;
+  if (end < 0) return null;
   return { start, end };
 }
 
@@ -353,19 +353,33 @@ function looksLikeText(bytes: Uint8Array): boolean {
   return /[\s)\]]Tj(?:\s|$)/.test(sample) || /[\s)\]]TJ(?:\s|$)/.test(sample);
 }
 
+function isImageStream(data: Uint8Array, marker: number): boolean {
+  const header = latin1(data.subarray(Math.max(0, marker - 900), marker));
+  const dictAt = header.lastIndexOf('<<');
+  const dict = dictAt >= 0 ? header.slice(dictAt) : header;
+  if (/\/Subtype\s*\/Image\b/.test(dict)) return true;
+  return /\/Width\b/.test(dict) && /\/Height\b/.test(dict) && /\/ColorSpace\b/.test(dict);
+}
+
 function decodedStream(data: Uint8Array, marker: number, payload: { start: number; end: number }): Uint8Array | null {
+  if (isImageStream(data, marker)) return null;
   const raw = data.subarray(payload.start, payload.end);
   const header = data.subarray(Math.max(0, marker - 400), marker);
-  if (indexOfBytes(header, FLATE) < 0) return raw;
+  if (indexOfBytes(header, FLATE) < 0) {
+    if (raw.length > MAX_STREAM && !looksLikeText(raw)) return null;
+    return raw.length > MAX_STREAM ? raw.subarray(0, MAX_STREAM) : raw;
+  }
+  if (raw.length > MAX_STREAM) return null;
   try {
-    return inflate(raw);
+    const inflated = inflate(raw);
+    if (inflated.length > MAX_STREAM && !looksLikeText(inflated.subarray(0, 12_000))) return null;
+    return inflated.length > MAX_STREAM ? inflated.subarray(0, MAX_STREAM) : inflated;
   } catch {
     return null;
   }
 }
 
-export function extractPdfText(data: Uint8Array): string {
-  const streams: Uint8Array[] = [];
+function visitStreams(data: Uint8Array, visit: (decoded: Uint8Array) => void) {
   let cursor = 0;
   while (cursor < data.length) {
     const marker = indexOfBytes(data, STREAM, cursor);
@@ -376,22 +390,43 @@ export function extractPdfText(data: Uint8Array): string {
       continue;
     }
     const decoded = decodedStream(data, marker, payload);
-    if (decoded) streams.push(decoded);
+    if (decoded) visit(decoded);
     cursor = payload.end + ENDSTREAM.length;
   }
+}
 
-  const map = new Map<number, string>();
-  for (const stream of streams) {
-    const text = latin1(stream.subarray(0, Math.min(stream.length, 200_000)));
-    if (text.includes('beginbfchar') || text.includes('beginbfrange')) absorbCmap(text, map);
+export function pdfPageRatio(data: Uint8Array): number {
+  const sample = latin1(data.subarray(0, Math.min(data.length, 250_000)));
+  const box = /\/MediaBox\s*\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]/.exec(sample);
+  if (!box) return 792 / 612;
+  let width = Math.abs(Number(box[3]) - Number(box[1]));
+  let height = Math.abs(Number(box[4]) - Number(box[2]));
+  if (!(width > 0) || !(height > 0)) return 792 / 612;
+  if (/\/Rotate\s+(?:90|270)\b/.test(sample)) {
+    const swap = width;
+    width = height;
+    height = swap;
   }
+  const ratio = height / width;
+  return ratio >= 0.2 && ratio <= 6 ? ratio : 792 / 612;
+}
+
+export function extractPdfText(data: Uint8Array): string {
+  const map = new Map<number, string>();
+  visitStreams(data, (decoded) => {
+    const sample = latin1(decoded.subarray(0, Math.min(decoded.length, 200_000)));
+    if (sample.includes('beginbfchar') || sample.includes('beginbfrange')) absorbCmap(sample, map);
+  });
 
   const pieces: string[] = [];
-  for (const stream of streams) {
-    if (pieces.join('\n').length >= MAX_TEXT) break;
-    if (!looksLikeText(stream)) continue;
-    const text = textFromContent(latin1(stream), map);
-    if (text) pieces.push(text);
-  }
+  let used = 0;
+  visitStreams(data, (decoded) => {
+    if (used >= MAX_TEXT) return;
+    if (!looksLikeText(decoded)) return;
+    const text = textFromContent(latin1(decoded), map);
+    if (!text) return;
+    pieces.push(text);
+    used += text.length + 1;
+  });
   return pieces.join('\n').slice(0, MAX_TEXT).trim();
 }

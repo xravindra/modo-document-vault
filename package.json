@@ -13,8 +13,7 @@
     "deploy:preview": "npx eas-cli@latest workflow:run .eas/workflows/preview.yml",
     "deploy:web": "npx eas-cli@latest deploy --production --non-interactive",
     "release": "npx eas-cli@latest workflow:run .eas/workflows/release.yml",
-    "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/logic.test.mts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",

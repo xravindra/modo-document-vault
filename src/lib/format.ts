@@ -13,6 +13,13 @@ export function formatWhen(ms: number): string {
   }).format(ms);
 }
 
+export function shareSummary(title: string, fields: { label: string; value: string }[]): string {
+  const lines = fields
+    .map((field) => `${field.label}: ${field.value}`.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 2);
+  return [title.trim(), ...lines].filter(Boolean).join('\n');
+}
+
 export function engineLabel(engine: string): string {
   if (engine === 'pdf-text') return 'PDF text';
   if (engine === 'ocr') return 'Recognized text';

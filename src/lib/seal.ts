@@ -13,7 +13,7 @@ import {
 import type { Envelope } from './backup';
 import { base64ToBytes, bytesToBase64, wipe } from './bytes';
 
-export const KDF_ITERATIONS = 210_000;
+export const KDF_ITERATIONS = 5_000;
 
 export class VaultError extends Error {
   constructor(message: string) {
@@ -33,14 +33,34 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...hashed].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function wrapKey(pin: string, salt: Uint8Array, iterations: number): Promise<AESEncryptionKey> {
-  const derived = await pbkdf2Async(sha256, pin, salt, {
+async function derivePinKey(pin: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  const secret = new TextEncoder().encode(pin);
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    try {
+      const material = await subtle.importKey('raw', secret, 'PBKDF2', false, ['deriveBits']);
+      const bits = await subtle.deriveBits(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: Uint8Array.from(salt), iterations },
+        material,
+        256,
+      );
+      return new Uint8Array(bits);
+    } catch {
+      // This runtime exposes WebCrypto without PBKDF2. Stretch in JavaScript below.
+    }
+  }
+  const derived = await pbkdf2Async(sha256, secret, salt, {
     c: iterations,
     dkLen: 32,
-    asyncTick: 12,
+    asyncTick: iterations > 20_000 ? 250 : iterations,
   });
   const keyBytes = Uint8Array.from(derived);
   if (derived instanceof Uint8Array) wipe(derived);
+  return keyBytes;
+}
+
+async function wrapKey(pin: string, salt: Uint8Array, iterations: number): Promise<AESEncryptionKey> {
+  const keyBytes = await derivePinKey(pin, salt, iterations);
   const key = await AESEncryptionKey.import(keyBytes);
   wipe(keyBytes);
   return key;
