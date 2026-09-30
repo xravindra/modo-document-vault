@@ -1,6 +1,8 @@
 import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 
+import { openPdf } from './pdfOpen';
+
 const DEVICE = 'This device cannot lock or unlock a PDF. Open the vault in a browser to do that.';
 
 type Toolkit = {
@@ -11,8 +13,7 @@ type Toolkit = {
 let toolkitPromise: Promise<Toolkit> | null = null;
 
 export async function unlockPdf(bytes: Uint8Array, password: string): Promise<Uint8Array> {
-  const pdf = await toolkit();
-  return pdf.unlock(bytes, { password });
+  return openPdf(bytes, password);
 }
 
 export async function lockPdf(bytes: Uint8Array, password: string): Promise<Uint8Array> {

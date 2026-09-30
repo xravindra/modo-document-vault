@@ -309,6 +309,24 @@ class VaultSession {
     });
   }
 
+  saveExtraction(id: string, extraction: Extraction, pageIndex = 0) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      const storedPages = doc.pages && doc.pages.length > 0 ? documentPages(doc) : null;
+      const pages = storedPages?.map((page, itemIndex) => (itemIndex === pageIndex ? { ...page, extraction } : page));
+      this.catalog.documents[index] = {
+        ...doc,
+        extraction: pageIndex === 0 ? extraction : doc.extraction,
+        pages,
+      };
+      this.remember('edit', `Read the text on ${doc.title}`);
+      await this.persist();
+    });
+  }
+
   addPages(id: string, pages: PageInput[]) {
     return this.enqueue(async () => {
       const key = this.assertOpen();

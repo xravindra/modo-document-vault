@@ -116,12 +116,12 @@ export function PressableScale({
   );
 }
 
-export function BackButton({ href, label = 'Back' }: { href?: Href; label?: string }) {
+export function BackButton({ href, label = 'Back', style }: { href?: Href; label?: string; style?: StyleProp<ViewStyle> }) {
   return (
     <PressableScale
       accessibilityLabel={label}
       onPress={() => (href ? router.replace(href) : router.back())}
-      style={styles.back}
+      style={[styles.back, style]}
     >
       <Text style={styles.backText}>{label}</Text>
     </PressableScale>

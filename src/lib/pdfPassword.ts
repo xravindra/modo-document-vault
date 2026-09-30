@@ -56,7 +56,8 @@ export async function removePdfPassword(bytes: Uint8Array, password: string): Pr
     return opened;
   } catch (error) {
     if (error instanceof Error && error.message === 'Could not remove the password from this document.') throw error;
-    if (error instanceof Error && error.message.startsWith('This device cannot remove a PDF password')) throw error;
+    if (error instanceof Error && error.message === 'That password does not open this document.') throw error;
+    if (error instanceof Error && (error.message.startsWith('This PDF') || error.message.startsWith('This device'))) throw error;
     if (isWrongPassword(error)) throw new Error('That password does not open this document.');
     throw new Error('Could not remove the password from this document.');
   }

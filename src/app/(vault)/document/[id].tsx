@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -39,11 +40,15 @@ export default function DocumentScreen() {
   const [draftName, setDraftName] = useState('');
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [revision, setRevision] = useState(0);
   const [askPassword, setAskPassword] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const fieldSeq = useRef(0);
 
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function DocumentScreen() {
     setAskPassword(false);
     setPassword('');
     setConfirmPassword('');
+    setMenuOpen(false);
   }, [id, pageIndex]);
 
   const passwordProtected = useMemo(() => {
@@ -195,6 +201,25 @@ export default function DocumentScreen() {
       setMessage(error instanceof Error ? error.message : 'Could not save these fields.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function extractText() {
+    if (!doc || !plain || integrity !== 'ok' || extracting) return;
+    setExtracting(true);
+    setMessage(null);
+    vault.holdAutoLock();
+    try {
+      const extraction = await extractDocument(plain, mime || doc.mimeType, fileName || doc.fileName);
+      await vault.saveExtraction(doc.id, extraction, pageIndex);
+      setFields(extraction.fields.map((field) => ({ ...field })));
+      const count = extraction.fields.length;
+      setMessage(count > 0 ? `Extracted ${count === 1 ? '1 field' : `${count} fields`} from this page.` : extraction.note);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not extract text from this page.');
+    } finally {
+      setExtracting(false);
+      vault.releaseAutoLock();
     }
   }
 
@@ -389,7 +414,20 @@ export default function DocumentScreen() {
 
   return (
     <Screen>
-      <BackButton label="Back" />
+      <View style={styles.topBar}>
+        <BackButton label="Back" style={styles.backInBar} />
+        <Pressable
+          accessibilityLabel={menuOpen ? 'Close actions' : 'Actions'}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: menuOpen }}
+          onPress={() => setMenuOpen((open) => !open)}
+          style={styles.menuButton}
+        >
+          <View style={styles.burger} />
+          <View style={styles.burger} />
+          <View style={styles.burger} />
+        </Pressable>
+      </View>
       <Kicker>{kindLabel(doc.kind)}</Kicker>
       <Headline>{doc.title}</Headline>
       <View style={styles.metaRow}>
@@ -538,92 +576,115 @@ export default function DocumentScreen() {
           </View>
         </View>
       ) : null}
-      <View style={styles.actions}>
-        <ActionButton
-          accessibilityLabel={`Share file ${shownName}`}
-          disabled={!plain || integrity !== 'ok'}
-          icon="share"
-          label="Share"
-          onPress={() => void shareFile()}
-        />
-        <ActionButton
-          accessibilityLabel="Save extracted fields"
-          disabled={saving}
-          icon="save"
-          label={saving ? 'Saving…' : 'Save'}
-          onPress={() => void saveFields()}
-        />
-        <ActionButton
-          accessibilityLabel={`Download ${shownName}`}
-          disabled={!plain || integrity !== 'ok'}
-          icon="download"
-          label="Download"
-          onPress={() => void download()}
-          tone="gold"
-        />
-        <ActionButton
-          accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
-          disabled={unlocking || !plain || integrity !== 'ok'}
-          icon={showingLocked ? 'unlock' : 'lock'}
-          label={
-            unlocking
-              ? hasTwin
-                ? 'Switching…'
-                : showingLocked
-                  ? 'Unlocking…'
-                  : 'Locking…'
-              : showingLocked
-                ? 'Unlock file'
-                : 'Lock file'
-          }
-          onPress={() => {
-            setMessage(null);
-            if (hasTwin) {
-              void switchCopy();
-              return;
-            }
-            setAskPassword((open) => {
-              if (open) {
-                setPassword('');
-                setConfirmPassword('');
-              }
-              return !open;
-            });
-          }}
-        />
-        <ActionButton accessibilityLabel="Add a field" icon="add" label="Add a field" onPress={addField} />
-        <ActionButton
-          accessibilityLabel="Add a page"
-          disabled={adding}
-          icon="add"
-          label={adding ? 'Adding…' : 'Add a page'}
-          onPress={() => void addPages()}
-        />
-        {fields.length > 0 ? (
-          <ActionButton
-            accessibilityLabel={`Share details from ${doc.title}`}
-            icon="details"
-            label="Share details"
-            onPress={() => void shareDetails()}
+      <Modal animationType="fade" onRequestClose={() => setMenuOpen(false)} transparent visible={menuOpen}>
+        <View style={styles.menuLayer}>
+          <Pressable accessibilityLabel="Close actions" onPress={() => setMenuOpen(false)} style={styles.menuBackdrop} />
+          <View
+            style={[
+              styles.menu,
+              {
+                top: insets.top + 62,
+                right: Math.max(0, (width - Math.min(width, 560)) / 2) + 22,
+                maxHeight: Math.max(220, height - insets.top - insets.bottom - 88),
+              },
+            ]}
+          >
+            <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Share file ${shownName}`}
+            disabled={!plain || integrity !== 'ok'}
+            icon="share"
+            label="Share"
+            onPress={() => void shareFile()}
           />
-        ) : null}
-        <ActionButton
-          accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
-          disabled={deletingPage || removing}
-          icon="remove"
-          label={deletingPage ? 'Deleting…' : 'Delete page'}
-          onPress={() => void deletePage()}
-          tone="danger"
-        />
-        <ActionButton
-          accessibilityLabel={`Delete document ${doc.title}`}
-          disabled={removing || deletingPage}
-          icon="remove"
-          label={removing ? 'Removing…' : 'Delete document'}
-          onPress={() => void remove()}
-          tone="danger"
-        />
-      </View>
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Save extracted fields"
+            disabled={saving}
+            icon="save"
+            label={saving ? 'Saving…' : 'Save'}
+            onPress={() => void saveFields()}
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Extract text from ${shownName}`}
+            disabled={extracting || !plain || integrity !== 'ok'}
+            icon="extract"
+            label={extracting ? 'Extracting…' : 'Extract text'}
+            onPress={() => void extractText()}
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Download ${shownName}`}
+            disabled={!plain || integrity !== 'ok'}
+            icon="download"
+            label="Download"
+            onPress={() => void download()}
+            tone="gold"
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
+            disabled={unlocking || !plain || integrity !== 'ok'}
+            icon={showingLocked ? 'unlock' : 'lock'}
+            label={
+              unlocking
+                ? hasTwin
+                  ? 'Switching…'
+                  : showingLocked
+                    ? 'Unlocking…'
+                    : 'Locking…'
+                : showingLocked
+                  ? 'Unlock file'
+                  : 'Lock file'
+            }
+            onPress={() => {
+              setMessage(null);
+              if (hasTwin) {
+                void switchCopy();
+                return;
+              }
+              setAskPassword((open) => {
+                if (open) {
+                  setPassword('');
+                  setConfirmPassword('');
+                }
+                return !open;
+              });
+            }}
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)} accessibilityLabel="Add a field" icon="add" label="Add a field" onPress={addField} />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Add a page"
+            disabled={adding}
+            icon="add"
+            label={adding ? 'Adding…' : 'Add a page'}
+            onPress={() => void addPages()}
+          />
+          {fields.length > 0 ? (
+            <ActionButton dismiss={() => setMenuOpen(false)}
+              accessibilityLabel={`Share details from ${doc.title}`}
+              icon="details"
+              label="Share details"
+              onPress={() => void shareDetails()}
+            />
+          ) : null}
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
+            disabled={deletingPage || removing}
+            icon="remove"
+            label={deletingPage ? 'Deleting…' : 'Delete page'}
+            onPress={() => void deletePage()}
+            tone="danger"
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Delete document ${doc.title}`}
+            disabled={removing || deletingPage}
+            icon="remove"
+            label={removing ? 'Removing…' : 'Delete document'}
+            onPress={() => void remove()}
+            tone="danger"
+          />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -635,6 +696,7 @@ function ActionButton({
   disabled,
   tone = 'paper',
   accessibilityLabel,
+  dismiss,
 }: {
   label: string;
   icon: ActionName;
@@ -642,17 +704,21 @@ function ActionButton({
   disabled?: boolean;
   tone?: 'paper' | 'gold' | 'danger';
   accessibilityLabel: string;
+  dismiss: () => void;
 }) {
-  const color = tone === 'gold' ? theme.ink : tone === 'danger' ? theme.danger : theme.paper;
+  const color = tone === 'gold' ? theme.gold : tone === 'danger' ? theme.danger : theme.paper;
   return (
     <PressableScale
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
-      onPress={onPress}
-      style={[styles.action, tone === 'gold' ? styles.download : null, tone === 'danger' ? styles.remove : null]}
+      onPress={() => {
+        dismiss();
+        onPress();
+      }}
+      style={styles.action}
     >
       <ActionIcon color={color} name={icon} />
-      <Text style={[styles.actionText, tone === 'gold' ? styles.downloadText : null, tone === 'danger' ? styles.removeText : null]}>
+      <Text style={[styles.actionText, tone === 'gold' ? styles.goldText : null, tone === 'danger' ? styles.removeText : null]}>
         {label}
       </Text>
     </PressableScale>
@@ -761,35 +827,50 @@ const styles = StyleSheet.create({
   },
   unlockCancelText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   unlockSubmitText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
-  actions: {
+  topBar: {
     width: '100%',
     maxWidth: '100%',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-    alignSelf: 'stretch',
-    gap: 8,
-    marginTop: 22,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  action: {
-    flexGrow: 0,
-    flexShrink: 1,
-    alignSelf: 'flex-start',
-    width: 120,
-    maxWidth: '100%',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.line,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+  backInBar: { marginBottom: 0 },
+  menuButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 5,
   },
-  actionText: { color: theme.paper, fontFamily: font.semibold, fontSize: 13, textAlign: 'center' },
-  download: { backgroundColor: theme.gold, borderColor: theme.gold },
-  downloadText: { color: theme.ink },
-  remove: { borderColor: 'rgba(224, 139, 122, 0.45)' },
+  burger: { width: 18, height: 2, borderRadius: 1, backgroundColor: theme.gold },
+  menuLayer: { flex: 1 },
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(16, 22, 20, 0.28)',
+  },
+  menu: {
+    position: 'absolute',
+    zIndex: 2,
+    width: 248,
+    maxWidth: '100%',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    paddingVertical: 6,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  actionText: { flex: 1, color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  goldText: { color: theme.gold },
   removeText: { color: theme.danger },
 });

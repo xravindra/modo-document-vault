@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-export type ActionName = 'share' | 'save' | 'download' | 'add' | 'details' | 'remove' | 'unlock' | 'lock';
+export type ActionName = 'share' | 'save' | 'download' | 'add' | 'details' | 'extract' | 'remove' | 'unlock' | 'lock';
 
 export function ActionIcon({ name, color }: { name: ActionName; color: string }) {
   if (name === 'share') {
@@ -37,6 +37,16 @@ export function ActionIcon({ name, color }: { name: ActionName; color: string })
       <View style={styles.box}>
         <View style={[styles.plusV, { backgroundColor: color }]} />
         <View style={[styles.plusH, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (name === 'extract') {
+    return (
+      <View style={styles.box}>
+        <View style={[styles.extractPage, { borderColor: color }]} />
+        <View style={[styles.extractLine, { backgroundColor: color, top: 5 }]} />
+        <View style={[styles.extractLine, { backgroundColor: color, top: 9 }]} />
+        <View style={[styles.extractLine, styles.extractLineShort, { backgroundColor: color, top: 13 }]} />
       </View>
     );
   }
@@ -123,6 +133,17 @@ const styles = StyleSheet.create({
   tray: { position: 'absolute', width: 12, height: 2, left: 3, bottom: 1, borderRadius: 1 },
   plusV: { position: 'absolute', width: 2, height: 12, left: 8, top: 3, borderRadius: 1 },
   plusH: { position: 'absolute', width: 12, height: 2, left: 3, top: 8, borderRadius: 1 },
+  extractPage: {
+    position: 'absolute',
+    width: 14,
+    height: 16,
+    left: 2,
+    top: 1,
+    borderWidth: 1.5,
+    borderRadius: 2,
+  },
+  extractLine: { position: 'absolute', width: 8, height: 1.5, left: 5, borderRadius: 1 },
+  extractLineShort: { width: 5 },
   line: { position: 'absolute', width: 14, height: 2, left: 2, borderRadius: 1 },
   lineShort: { width: 9 },
   lockShackle: {

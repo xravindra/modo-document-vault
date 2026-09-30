@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState } from 'react-native';
 
 import type { BioMode } from '@/lib/keyStore';
-import { emptyCatalog, type ActivityEvent, type ExtractedField, type Settings, type VaultDocument } from '@/lib/types';
+import { emptyCatalog, type ActivityEvent, type ExtractedField, type Extraction, type Settings, type VaultDocument } from '@/lib/types';
 import { PIN_LENGTH } from '@/lib/pin';
 import { session, VaultError, type AddDocumentInput, type PageInput } from '@/lib/vault';
 
@@ -34,6 +34,7 @@ type VaultApi = VaultModel & {
   releaseAutoLock: () => void;
   renameDocument: (id: string, fileName: string) => Promise<void>;
   saveFields: (id: string, fields: ExtractedField[], pageIndex?: number) => Promise<void>;
+  saveExtraction: (id: string, extraction: Extraction, pageIndex?: number) => Promise<void>;
   removeDocument: (id: string) => Promise<void>;
   removePage: (id: string, pageIndex: number) => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
@@ -183,6 +184,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       releaseAutoLock,
       renameDocument: (id, fileName) => run(() => session.renameDocument(id, fileName), 'unlocked'),
       saveFields: (id, fields, pageIndex) => run(() => session.saveFields(id, fields, pageIndex), 'unlocked'),
+      saveExtraction: (id, extraction, pageIndex) => run(() => session.saveExtraction(id, extraction, pageIndex), 'unlocked'),
       removeDocument: (id) => run(() => session.removeDocument(id), 'unlocked'),
       removePage: (id, pageIndex) => run(() => session.removePage(id, pageIndex), 'unlocked'),
       updateSettings: (patch) => run(() => session.updateSettings(patch), 'unlocked'),
