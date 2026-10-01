@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -141,19 +141,28 @@ export function LockScreen() {
     setSummary(null);
   }
 
-  async function biometric() {
+  async function biometric(automatic = false) {
     if (busy || paused) return;
-    setBusy('Waiting for biometrics…');
+    setBusy(vault.hasFingerprint ? 'Waiting for your fingerprint…' : 'Waiting for biometrics…');
     setMessage(null);
     try {
       await vault.unlockWithBiometrics();
       hapticSuccess();
     } catch (error) {
-      shakeDots(error instanceof Error ? error.message : 'Biometric unlock was cancelled.');
+      if (!automatic) {
+        shakeDots(error instanceof Error ? error.message : 'Fingerprint unlock was cancelled.');
+      }
     } finally {
       setBusy('');
     }
   }
+
+  const prompted = useRef(false);
+  useEffect(() => {
+    if (prompted.current || pending || paused || !vault.hasVault || !vault.biometricsReady) return;
+    prompted.current = true;
+    void biometric(true);
+  }, [pending, paused, vault.hasVault, vault.biometricsReady]);
 
   const title = pending
     ? 'Restore a backup'
@@ -206,8 +215,15 @@ export function LockScreen() {
               onComplete={(next) => void submit(next)}
             />
             {vault.hasVault && vault.biometricsReady ? (
-              <PressableScale accessibilityLabel="Unlock with biometrics" onPress={() => void biometric()} style={styles.bio}>
-                <Text style={styles.bioText}>Use Face ID or fingerprint</Text>
+              <PressableScale
+                accessibilityLabel={vault.hasFingerprint ? 'Unlock with fingerprint' : 'Unlock with biometrics'}
+                onPress={() => void biometric()}
+                style={styles.bio}
+              >
+                <Text>
+                  {vault.hasFingerprint ? <Text style={styles.bioEmoji}>🫆 </Text> : null}
+                  <Text style={styles.bioText}>{vault.hasFingerprint ? 'Fingerprint' : 'Use biometrics'}</Text>
+                </Text>
               </PressableScale>
             ) : null}
             <PressableScale
@@ -271,6 +287,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   bio: { marginTop: 14, alignItems: 'center', padding: 12 },
+  bioEmoji: { fontSize: 18 },
   bioText: { color: theme.gold, fontFamily: font.medium, fontSize: 15 },
   restore: { marginTop: 18, alignItems: 'center' },
   restoreTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28, textAlign: 'center' },

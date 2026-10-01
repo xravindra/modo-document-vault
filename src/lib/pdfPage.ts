@@ -72,7 +72,7 @@ async function prepareViewer(): Promise<Viewer> {
   return { fontUrl: withSlash(fontsDir.uri), worker: scriptBody(worker), main: scriptBody(main) };
 }
 
-function ensurePdfViewer(): Promise<Viewer> {
+export function loadPdfViewer(): Promise<Viewer> {
   if (!ready) {
     ready = prepareViewer().catch((error: unknown) => {
       ready = null;
@@ -101,12 +101,12 @@ function paint(){
         var canvas=document.getElementById('page');
         var base=page.getViewport({scale:1});
         var pixelRatio=Math.min(window.devicePixelRatio||1,2);
-        var scale=Math.min(width/base.width,height/base.height)*pixelRatio;
+        var scale=(width/base.width)*pixelRatio;
         var viewport=page.getViewport({scale:scale});
         canvas.width=Math.max(1,Math.floor(viewport.width));
         canvas.height=Math.max(1,Math.floor(viewport.height));
-        canvas.style.width=Math.max(1,Math.floor(viewport.width/pixelRatio))+'px';
-        canvas.style.height=Math.max(1,Math.floor(viewport.height/pixelRatio))+'px';
+        canvas.style.width='100%';
+        canvas.style.height='auto';
         return page.render({canvasContext:canvas.getContext('2d'),viewport:viewport}).promise;
       })
       .then(function(){ document.title = 'shown'; })
@@ -120,7 +120,7 @@ function buildHtml(viewer: Viewer, base64: string): string {
   return (
     '<!DOCTYPE html><html><head><meta charset="utf-8"/>' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>' +
-    '<style>html,body{margin:0;height:100%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}canvas{display:block}</style>' +
+    '<style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}canvas{display:block;width:100%;height:auto}</style>' +
     '</head><body><canvas id="page"></canvas><script>' +
     viewer.worker +
     '</script><script>' +
@@ -132,7 +132,7 @@ function buildHtml(viewer: Viewer, base64: string): string {
 }
 
 export async function renderPdfPage(pdfUri: string): Promise<File> {
-  const viewer = await ensurePdfViewer();
+  const viewer = await loadPdfViewer();
   const encoded = (await new File(pdfUri).base64()).replace(/\s/g, '');
   const page = new File(viewerRoot(), `page-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.html`);
   page.create();

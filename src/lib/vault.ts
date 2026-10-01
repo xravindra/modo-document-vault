@@ -3,7 +3,7 @@ import { AESEncryptionKey, randomUUID } from 'expo-crypto';
 import { parseBackup, serializeBackup, type BackupFile } from './backup';
 import { isPin, PIN_LENGTH } from './pin';
 import { base64ToBytes, bytesToBase64, exceedsFileLimit, renamedFileName, wipe } from './bytes';
-import { deviceBiometricsAvailable, promptBiometrics } from './biometrics';
+import { deviceBiometricsAvailable, fingerprintEnrolled, promptBiometrics } from './biometrics';
 import * as blobs from './blobStore';
 import * as keys from './keyStore';
 import { createEnvelope, openBytes, openEnvelope, sealBytes, sha256Hex, VaultError } from './seal';
@@ -116,6 +116,14 @@ class VaultSession {
   async biometricsReady() {
     const mode = await keys.readBioMode();
     return mode !== 'off' && (await deviceBiometricsAvailable());
+  }
+
+  async hasFingerprint() {
+    return fingerprintEnrolled();
+  }
+
+  async canUseBiometrics() {
+    return deviceBiometricsAvailable();
   }
 
   async bioMode() {

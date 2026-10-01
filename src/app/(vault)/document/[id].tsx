@@ -215,7 +215,10 @@ export default function DocumentScreen() {
   async function extractText() {
     if (!doc || !plain || integrity !== 'ok' || extracting) return;
     setExtracting(true);
-    setMessage(null);
+    const pageMime = mime || doc.mimeType;
+    const pageName = fileName || doc.fileName;
+    const visual = pageMime.startsWith('image/') || pageMime.includes('pdf') || pageName.toLowerCase().endsWith('.pdf');
+    setMessage(visual ? 'Recognizing text…' : null);
     vault.holdAutoLock();
     try {
       const extraction = await extractDocument(plain, mime || doc.mimeType, fileName || doc.fileName);
@@ -561,7 +564,7 @@ export default function DocumentScreen() {
         </Text>
       </View>
       <Banner message={message} />
-      {preview && (mime.startsWith('image/') || (mime.includes('pdf') && plain)) ? (
+      {preview ? (
         <View style={styles.previewCard}>
           {mime.startsWith('image/') ? (
             <Image
@@ -572,6 +575,9 @@ export default function DocumentScreen() {
             />
           ) : null}
           {mime.includes('pdf') && plain ? <PdfFrame uri={preview} ratio={pdfPageRatio(plain)} /> : null}
+          {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
+            <Text style={styles.fileFace}>{extracted.text || doc.title}</Text>
+          ) : null}
         </View>
       ) : null}
       <Text style={styles.note}>{extracted.note}</Text>
@@ -878,7 +884,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     marginTop: 16,
-    padding: 12,
+    padding: 0,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.line,
@@ -893,10 +899,20 @@ const styles = StyleSheet.create({
     margin: 0,
     padding: 0,
     borderWidth: 0,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: theme.ink,
   },
-  imagePending: { height: 220 },
+  imagePending: { width: '100%', height: 260 },
+  fileFace: {
+    width: '100%',
+    alignSelf: 'stretch',
+    color: theme.ink,
+    backgroundColor: theme.paper,
+    fontFamily: font.body,
+    fontSize: 15,
+    lineHeight: 22,
+    padding: 16,
+  },
   note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   pageStep: { paddingVertical: 8, paddingHorizontal: 4 },

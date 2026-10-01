@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
 import { DocumentCard } from '@/components/DocumentCard';
 import { PressableScale } from '@/components/ui';
 import { groupByKind, type VaultDocument } from '@/lib/types';
 import { font, theme } from '@/theme';
-
-const STEP = 8;
 
 export function DocumentStack({
   name,
@@ -47,14 +45,19 @@ export function DocumentStack({
 
 function CategoryStack({ kind, label, documents }: { kind: string; label: string; documents: VaultDocument[] }) {
   const [open, setOpen] = useState(false);
-  const [all, setAll] = useState(false);
-  const latest = documents[0];
-  const depth = Math.min(Math.max(documents.length - 1, 1), 3);
+  const [width, setWidth] = useState(0);
   const count = documents.length;
-  if (!latest) return null;
+  const cardWidth = width > 0 ? Math.max(220, Math.round(width * 0.84)) : 280;
+  if (count === 0) return null;
 
   return (
-    <View style={styles.category}>
+    <View
+      style={styles.category}
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width);
+        setWidth((current) => (current === next ? current : next));
+      }}
+    >
       <View style={styles.categoryHead}>
         <PressableScale
           accessibilityLabel={`${open ? 'Collapse' : 'Expand'} ${label}`}
@@ -65,45 +68,25 @@ function CategoryStack({ kind, label, documents }: { kind: string; label: string
           <CategoryAvatar kind={kind} size={28} />
           <Text numberOfLines={1} style={styles.categoryName}>{label}</Text>
         </PressableScale>
-        {open && count > 1 ? (
-          <PressableScale
-            accessibilityLabel={all ? `Show ${label} as a stack` : `Show every file in ${label}`}
-            onPress={() => setAll((value) => !value)}
-          >
-            <Text style={styles.count}>{all ? 'Stack' : 'All'}</Text>
-          </PressableScale>
-        ) : (
-          <Text style={styles.count}>{count}</Text>
-        )}
+        <Text style={styles.count}>{count}</Text>
       </View>
       {open ? (
-        all ? (
-          documents.map((doc) => <DocumentCard key={doc.id} doc={doc} showFile swipe />)
-        ) : (
-          <View style={styles.pile}>
-            <View style={{ height: depth * STEP }} />
-            <View style={styles.front}>
-              {Array.from({ length: depth }, (_, index) => (
-                <View
-                  key={index}
-                  pointerEvents="none"
-                  style={[
-                    styles.sheet,
-                    {
-                      top: -((depth - index) * STEP),
-                      left: index * STEP,
-                      right: (depth - index) * STEP,
-                      backgroundColor: index === depth - 1 ? theme.inkSoft : theme.inkRaised,
-                    },
-                  ]}
-                />
-              ))}
-              <View style={{ marginLeft: depth * STEP }}>
-                <DocumentCard doc={latest} showFile swipe />
-              </View>
+        <ScrollView
+          horizontal
+          decelerationRate="fast"
+          disableIntervalMomentum
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          snapToAlignment="start"
+          snapToInterval={cardWidth + 12}
+          contentContainerStyle={styles.carousel}
+        >
+          {documents.map((doc) => (
+            <View key={doc.id} style={{ width: cardWidth }}>
+              <DocumentCard carousel doc={doc} showFile />
             </View>
-          </View>
-        )
+          ))}
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -127,13 +110,5 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  pile: { width: '100%' },
-  front: { width: '100%', position: 'relative' },
-  sheet: {
-    position: 'absolute',
-    height: 260,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: theme.line,
-  },
+  carousel: { gap: 12, paddingRight: 4 },
 });

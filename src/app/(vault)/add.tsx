@@ -8,6 +8,7 @@ import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
 import { canonicalMember, SELF } from '@/lib/members';
+import { smartDocumentName } from '@/lib/naming';
 import { VaultMark } from '@/components/VaultMark';
 import { extractDocument, suggestedKind } from '@/lib/extract';
 import { MAX_PAGES } from '@/lib/pages';
@@ -33,10 +34,6 @@ function paint() {
   });
 }
 
-function titleFrom(name: string) {
-  return name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled document';
-}
-
 export default function AddScreen() {
   const vault = useVault();
   const params = useLocalSearchParams<{ sample?: string }>();
@@ -48,7 +45,11 @@ export default function AddScreen() {
   const sampleRef = useRef(false);
 
   async function readPicked(next: Draft) {
-    setReadingLabel('Reading the document…');
+    const visual =
+      next.mimeType.startsWith('image/') ||
+      next.mimeType.includes('pdf') ||
+      next.fileName.toLowerCase().endsWith('.pdf');
+    setReadingLabel(visual ? 'Recognizing text…' : 'Reading the document…');
     setPhase('reading');
     setMessage(null);
     await paint();
@@ -60,10 +61,19 @@ export default function AddScreen() {
         const pageResult = page.extraction ?? (await extractDocument(page.bytes, page.mimeType, page.fileName));
         extraPages.push({ ...page, extraction: pageResult });
       }
-      const kind = next.kind ?? suggestedKind('other', [result.text, ...extraPages.map((page) => page.extraction?.text ?? '')].join('\n'));
+      const text = [result.text, ...extraPages.map((page) => page.extraction?.text ?? '')].join('\n');
+      const kind = next.kind ?? suggestedKind('other', text);
+      const named = smartDocumentName({
+        fileName: next.fileName,
+        mimeType: next.mimeType,
+        kind,
+        member: next.member,
+        fields: result.fields,
+        text,
+      });
       setReadingLabel('Saving the document…');
       await paint();
-      const doc = await vault.addDocument({ ...next, kind, extraPages, extraction: result });
+      const doc = await vault.addDocument({ ...next, ...named, kind, extraPages, extraction: result });
       router.replace(`/document/${doc.id}` as Href);
       return true;
     } catch (error) {
@@ -94,7 +104,7 @@ export default function AddScreen() {
       bytes: first.bytes,
       fileName: first.fileName,
       mimeType: first.mimeType,
-      title: titleFrom(first.fileName),
+      title: 'Document',
       kind,
       member: name,
       extraPages: limited.slice(1),

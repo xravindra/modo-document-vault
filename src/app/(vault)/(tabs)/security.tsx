@@ -18,9 +18,13 @@ export default function SecurityScreen() {
         : `Locks after ${Math.round(vault.settings.autoLockMs / 60000)} min in the background`;
   const bio =
     vault.bioMode === 'hardware'
-      ? 'On. The device keychain asks for biometrics before it releases the vault key.'
+      ? vault.hasFingerprint
+        ? 'On. The device keychain asks for your fingerprint before it releases the vault key.'
+        : 'On. The device keychain asks for biometrics before it releases the vault key.'
       : vault.bioMode === 'gate'
-        ? 'On. This install asks for biometrics, then reads the key. A store build binds that read to secure hardware.'
+        ? vault.hasFingerprint
+          ? 'On. This install asks for your fingerprint, then reads the key.'
+          : 'On. This install asks for biometrics, then reads the key. A store build binds that read to secure hardware.'
         : 'Off.';
 
   const pillars = [
@@ -34,7 +38,7 @@ export default function SecurityScreen() {
     },
     {
       title: 'Authentication',
-      body: `${auto} Repeated wrong PINs pause the pad. Biometrics: ${bio}`,
+      body: `${auto} Repeated wrong PINs pause the pad. ${vault.hasFingerprint ? 'Fingerprint' : 'Biometrics'}: ${bio}`,
     },
     {
       title: 'Availability',

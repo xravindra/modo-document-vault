@@ -85,7 +85,6 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
     backgroundColor: '#ffffff',
-    borderRadius: 12,
   },
   web: {
     flex: 1,

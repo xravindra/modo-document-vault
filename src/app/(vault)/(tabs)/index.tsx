@@ -65,7 +65,7 @@ export default function HomeScreen() {
 
       <Text style={styles.section}>Stacks</Text>
       {stacks.length > 0 ? (
-        <Text style={styles.hint}>Tap a family member or category to show or hide its files. Swipe a file right to download, left to share.</Text>
+        <Text style={styles.hint}>Tap a family member or category to show or hide its files. Swipe a row sideways to see the next file.</Text>
       ) : null}
       {stacks.length === 0 ? (
         <View style={styles.empty}>

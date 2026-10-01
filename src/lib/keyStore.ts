@@ -69,7 +69,7 @@ export async function readBiometricKey(mode: BioMode): Promise<string | null> {
     return SecureStore.getItemAsync(BIO_KEY, {
       ...options,
       requireAuthentication: true,
-      authenticationPrompt: 'Unlock MODO',
+      authenticationPrompt: 'Unlock with your fingerprint',
     });
   }
   return SecureStore.getItemAsync(BIO_KEY, options);
@@ -80,7 +80,7 @@ export async function writeBiometricKey(hex: string): Promise<BioMode> {
     await SecureStore.setItemAsync(BIO_KEY, hex, {
       ...options,
       requireAuthentication: true,
-      authenticationPrompt: 'Unlock MODO',
+      authenticationPrompt: 'Unlock with your fingerprint',
     });
     await SecureStore.setItemAsync(BIO_MODE, 'hardware', options);
     return 'hardware';

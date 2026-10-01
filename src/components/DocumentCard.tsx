@@ -14,7 +14,17 @@ import { documentMember } from '@/lib/members';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
-function Card({ doc, swipe = false, showFile = false }: { doc: VaultDocument; swipe?: boolean; showFile?: boolean }) {
+function Card({
+  doc,
+  swipe = false,
+  showFile = false,
+  carousel = false,
+}: {
+  doc: VaultDocument;
+  swipe?: boolean;
+  showFile?: boolean;
+  carousel?: boolean;
+}) {
   const vault = useVault();
   const swipeRef = useRef<SwipeableMethods>(null);
   const acting = useRef(false);
@@ -54,7 +64,7 @@ function Card({ doc, swipe = false, showFile = false }: { doc: VaultDocument; sw
     <PressableScale
       accessibilityLabel={`Open ${doc.title}`}
       onPress={() => router.push(`/document/${doc.id}` as Href)}
-      style={[styles.card, showFile ? styles.cardFile : null]}
+      style={[styles.card, showFile ? styles.cardFile : null, carousel ? styles.cardCarousel : null]}
     >
       {showFile ? <DocumentPreview doc={doc} /> : <View style={styles.rule} />}
       <View style={styles.copy}>
@@ -65,8 +75,8 @@ function Card({ doc, swipe = false, showFile = false }: { doc: VaultDocument; sw
             {kindLabel(doc.kind)} · {documentMember(doc)}
           </Text>
         </View>
-        <Text style={styles.title}>{doc.title}</Text>
-        <Text style={styles.meta}>
+        <Text numberOfLines={carousel ? 2 : undefined} style={styles.title}>{doc.title}</Text>
+        <Text numberOfLines={carousel ? 2 : undefined} style={styles.meta}>
           {note ?? `${formatWhen(doc.createdAt)} · ${formatBytes(doc.byteLength)} · ${engineLabel(doc.extraction.engine)}`}
         </Text>
       </View>
@@ -119,6 +129,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardFile: { flexDirection: 'column' },
+  cardCarousel: { marginBottom: 0, width: '100%' },
   rule: { width: 4, backgroundColor: theme.goldDeep },
   copy: { flex: 1, minWidth: 0, paddingHorizontal: 16, paddingVertical: 16 },
   kindRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

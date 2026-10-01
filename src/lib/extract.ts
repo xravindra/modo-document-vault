@@ -1,6 +1,7 @@
 import { extractImageText } from './extractImage';
 import { inferKind, parseFields } from './fields';
 import { extractPdfText, presentableText } from './pdfText';
+import { recognizeScan } from './recognizeScan';
 import type { DocKind, Extraction } from './types';
 
 export async function extractDocument(bytes: Uint8Array, mime: string, fileName: string): Promise<Extraction> {
@@ -17,7 +18,12 @@ export async function extractDocument(bytes: Uint8Array, mime: string, fileName:
       engine = 'pdf-text';
       note = 'Read the digital text already inside the PDF. The original file stays encrypted.';
     } else {
-      note = 'This PDF has no readable text layer. A scan can be added as a photo in the web app for recognition.';
+      const recognized = await recognizeScan(bytes);
+      note = recognized.note;
+      if (recognized.text.trim()) {
+        text = recognized.text;
+        engine = 'ocr';
+      }
     }
   } else if (isImage) {
     const recognized = await extractImageText(bytes, mime);
@@ -35,9 +41,7 @@ export async function extractDocument(bytes: Uint8Array, mime: string, fileName:
   const readable = presentableText(text);
   if (!readable && (engine === 'pdf-text' || engine === 'ocr' || engine === 'text')) {
     engine = 'metadata';
-    note = isPdf
-      ? 'This PDF has no readable text layer. A scan can be added as a photo in the web app for recognition.'
-      : 'The original file is stored. No readable text was found.';
+    note = 'The original file is stored. No readable text was found.';
   }
 
   return {

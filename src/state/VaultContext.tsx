@@ -13,6 +13,8 @@ type VaultModel = {
   hasVault: boolean;
   pinLength: number;
   biometricsReady: boolean;
+  hasFingerprint: boolean;
+  canUseBiometrics: boolean;
   bioMode: BioMode;
   documents: VaultDocument[];
   members: string[];
@@ -66,6 +68,8 @@ const initial: VaultModel = {
   hasVault: false,
   pinLength: PIN_LENGTH,
   biometricsReady: false,
+  hasFingerprint: false,
+  canUseBiometrics: false,
   bioMode: 'off',
   documents: [],
   members: [],
@@ -99,10 +103,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const publish = useCallback(async (status: Status, error: string | null = null) => {
     const snap = session.unlocked ? session.snapshot() : emptyCatalog();
-    const [hasVault, pinLength, biometricsReady, bioMode] = await Promise.all([
+    const [hasVault, pinLength, biometricsReady, hasFingerprint, canUseBiometrics, bioMode] = await Promise.all([
       session.hasEnvelope(),
       session.expectedPinLength(),
       session.biometricsReady(),
+      session.hasFingerprint(),
+      session.canUseBiometrics(),
       session.bioMode(),
     ]);
     setModel({
@@ -110,6 +116,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       hasVault,
       pinLength,
       biometricsReady,
+      hasFingerprint,
+      canUseBiometrics,
       bioMode,
       documents: snap.documents,
       members: snap.members,

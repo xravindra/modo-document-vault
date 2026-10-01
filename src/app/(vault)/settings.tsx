@@ -150,7 +150,7 @@ export default function SettingsScreen() {
         })}
       </View>
 
-      {vault.biometricsReady || vault.bioMode !== 'off' ? (
+      {vault.canUseBiometrics || vault.bioMode !== 'off' ? (
         <PressableScale
           disabled={busy}
           onPress={() => {
@@ -165,11 +165,25 @@ export default function SettingsScreen() {
             }}
           style={styles.lineButton}
         >
-          <Text style={styles.lineText}>{vault.settings.biometrics ? 'Turn off biometrics' : 'Turn on biometrics'}</Text>
+          <Text style={styles.lineText}>
+            {vault.settings.biometrics
+              ? vault.hasFingerprint
+                ? 'Turn off fingerprint unlock'
+                : 'Turn off biometrics'
+              : vault.hasFingerprint
+                ? 'Turn on fingerprint unlock'
+                : 'Turn on biometrics'}
+          </Text>
         </PressableScale>
-      ) : (
+      ) : null}
+      {vault.hasFingerprint ? (
+        <Text style={styles.note}>
+          Fingerprint unlock uses the sensor enrolled on this phone. Turn it on here, then the lock screen can open the vault with that fingerprint. The PIN still works.
+        </Text>
+      ) : null}
+      {!vault.canUseBiometrics && vault.bioMode === 'off' ? (
         <Text style={styles.note}>Biometrics appear on iPhones and Android phones that have Face ID or a fingerprint enrolled.</Text>
-      )}
+      ) : null}
 
       {pinStep === 'idle' ? (
         <PressableScale onPress={() => setPinStep('current')} style={styles.lineButton}>
