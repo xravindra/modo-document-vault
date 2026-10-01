@@ -1,5 +1,6 @@
 export const KINDS = [
   { id: 'identity', label: 'Identity' },
+  { id: 'card', label: 'Debit cards' },
   { id: 'travel', label: 'Travel' },
   { id: 'health', label: 'Health' },
   { id: 'finance', label: 'Finance' },
@@ -46,7 +47,10 @@ export type DocumentPage = {
 export type VaultDocument = {
   id: string;
   title: string;
-  kind: DocKind;
+  /** A built-in category id, or a name created in the vault. */
+  kind: string;
+  /** Family member this document is filed under. Empty for documents sealed before members existed. */
+  member: string;
   fileName: string;
   mimeType: string;
   byteLength: number;
@@ -85,6 +89,13 @@ export type Catalog = {
   documents: VaultDocument[];
   activity: ActivityEvent[];
   settings: Settings;
+  members: string[];
+  /** Category names created in this vault. Built-in categories are not listed here. */
+  categories: string[];
+  /** Emoji chosen for a family member, keyed by the stored name. */
+  memberEmoji: Record<string, string>;
+  /** Emoji chosen for a category, keyed by the category id or custom name. */
+  categoryEmoji: Record<string, string>;
 };
 
 export function emptyCatalog(): Catalog {
@@ -92,9 +103,36 @@ export function emptyCatalog(): Catalog {
     documents: [],
     activity: [],
     settings: { autoLockMs: 0, biometrics: false },
+    members: [],
+    categories: [],
+    memberEmoji: {},
+    categoryEmoji: {},
   };
 }
 
-export function kindLabel(kind: DocKind): string {
-  return KINDS.find((item) => item.id === kind)?.label ?? 'Other';
+export function kindLabel(kind: string): string {
+  return KINDS.find((item) => item.id === kind)?.label ?? (kind.trim() || 'Other');
+}
+
+export function isDocKind(value: string): value is DocKind {
+  return KINDS.some((item) => item.id === value);
+}
+
+export function groupByKind(
+  documents: VaultDocument[],
+  categories: string[] = [],
+): { kind: string; label: string; documents: VaultDocument[] }[] {
+  const seen = new Set<string>();
+  const groups: { kind: string; label: string; documents: VaultDocument[] }[] = [];
+  const take = (kind: string, label: string) => {
+    if (seen.has(kind)) return;
+    const rows = documents.filter((doc) => doc.kind === kind);
+    if (rows.length === 0) return;
+    seen.add(kind);
+    groups.push({ kind, label, documents: rows });
+  };
+  for (const kind of KINDS) take(kind.id, kind.label);
+  for (const name of categories) take(name, kindLabel(name));
+  for (const doc of documents) take(doc.kind, kindLabel(doc.kind));
+  return groups;
 }

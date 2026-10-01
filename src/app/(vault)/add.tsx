@@ -4,13 +4,15 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 
+import { KindPicker } from '@/components/KindPicker';
+import { MemberPicker } from '@/components/MemberPicker';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
+import { canonicalMember, SELF } from '@/lib/members';
 import { VaultMark } from '@/components/VaultMark';
 import { extractDocument, suggestedKind } from '@/lib/extract';
 import { MAX_PAGES } from '@/lib/pages';
 import { readSource } from '@/lib/readSource';
 import { buildSamplePassportPdf } from '@/lib/samplePdf';
-import type { DocKind } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -20,7 +22,8 @@ type Draft = {
   fileName: string;
   mimeType: string;
   title: string;
-  kind: DocKind;
+  kind: string | null;
+  member: string;
   extraPages: PageInput[];
 };
 
@@ -38,6 +41,8 @@ export default function AddScreen() {
   const vault = useVault();
   const params = useLocalSearchParams<{ sample?: string }>();
   const [phase, setPhase] = useState<'choose' | 'reading'>('choose');
+  const [member, setMember] = useState(SELF);
+  const [kind, setKind] = useState<string | null>(null);
   const [readingLabel, setReadingLabel] = useState('Reading the document…');
   const [message, setMessage] = useState<string | null>(null);
   const sampleRef = useRef(false);
@@ -55,7 +60,7 @@ export default function AddScreen() {
         const pageResult = page.extraction ?? (await extractDocument(page.bytes, page.mimeType, page.fileName));
         extraPages.push({ ...page, extraction: pageResult });
       }
-      const kind = suggestedKind(next.kind, [result.text, ...extraPages.map((page) => page.extraction?.text ?? '')].join('\n'));
+      const kind = next.kind ?? suggestedKind('other', [result.text, ...extraPages.map((page) => page.extraction?.text ?? '')].join('\n'));
       setReadingLabel('Saving the document…');
       await paint();
       const doc = await vault.addDocument({ ...next, kind, extraPages, extraction: result });
@@ -73,19 +78,16 @@ export default function AddScreen() {
   useEffect(() => {
     if (params.sample !== '1' || sampleRef.current) return;
     sampleRef.current = true;
-    const bytes = buildSamplePassportPdf();
-    void readPicked({
-      bytes,
-      fileName: 'example-passport.pdf',
-      mimeType: 'application/pdf',
-      title: 'Example passport',
-      kind: 'identity',
-      extraPages: [],
-    });
+    setMessage('The sample passport is filed under Self unless you choose someone else.');
   }, [params.sample]);
+
+  function chosenMember() {
+    return canonicalMember([], member) || SELF;
+  }
 
   async function acceptPages(pages: PageInput[]) {
     const first = pages[0];
+    const name = chosenMember();
     if (!first) return;
     const limited = pages.slice(0, MAX_PAGES);
     await readPicked({
@@ -93,7 +95,8 @@ export default function AddScreen() {
       fileName: first.fileName,
       mimeType: first.mimeType,
       title: titleFrom(first.fileName),
-      kind: 'other',
+      kind,
+      member: name,
       extraPages: limited.slice(1),
     });
   }
@@ -183,27 +186,46 @@ export default function AddScreen() {
       <BackButton label="Close" />
       <Kicker>Add</Kicker>
       <Headline>Seal a document</Headline>
-      <Quiet>The original file is encrypted before it is written. Extraction happens on this device.</Quiet>
+      <Quiet>Filed under Self unless you choose someone else. Pick a category or type a new one, or leave the category unset and the vault will choose from the text.</Quiet>
       <Banner message={message} />
 
       {phase === 'choose' ? (
         <View style={styles.stack}>
+          <MemberPicker
+            members={vault.members}
+            onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
+            onSelect={(name) => {
+              setMember(name);
+              setMessage(null);
+            }}
+            selected={member}
+          />
+          <KindPicker
+            categories={vault.categories}
+            onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
+            onSelect={(next) => {
+              setKind(next);
+              setMessage(null);
+            }}
+            selected={kind}
+          />
           <Choice label="Choose a file" detail="PDF, image, or text. Several files become pages." onPress={() => void pickDocument()} />
           <Choice label="Choose a photo" detail="Several photos become pages of one document" onPress={() => void pickImage(false)} />
           <Choice label="Take a photo" detail="Camera, used only for this capture" onPress={() => void pickImage(true)} />
           <Choice
             label="Try the sample passport"
-            detail="A generated PDF, so you can see extraction immediately"
-            onPress={() =>
+            detail="A generated PDF, filed under Self unless you choose someone else"
+            onPress={() => {
               void readPicked({
                 bytes: buildSamplePassportPdf(),
                 fileName: 'example-passport.pdf',
                 mimeType: 'application/pdf',
                 title: 'Example passport',
-                kind: 'identity',
+                kind,
+                member: chosenMember(),
                 extraPages: [],
-              })
-            }
+              });
+            }}
           />
         </View>
       ) : null}
@@ -228,7 +250,7 @@ function Choice({ label, detail, onPress }: { label: string; detail: string; onP
 }
 
 const styles = StyleSheet.create({
-  stack: { marginTop: 22, gap: 10 },
+  stack: { marginTop: 8, gap: 10 },
   choice: { borderRadius: 20, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.inkRaised, padding: 16 },
   choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
   choiceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 4 },

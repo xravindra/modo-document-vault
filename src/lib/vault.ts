@@ -7,8 +7,11 @@ import { deviceBiometricsAvailable, promptBiometrics } from './biometrics';
 import * as blobs from './blobStore';
 import * as keys from './keyStore';
 import { createEnvelope, openBytes, openEnvelope, sealBytes, sha256Hex, VaultError } from './seal';
+import { canonicalCategory, CATEGORY_LIMIT, rememberCategory, sameCategory } from './categories';
+import { isEmojiChoice } from './emoji';
+import { canonicalMember, MEMBER_LIMIT, memberRole, normalizeMember, rememberMember, sameMember, SELF, settleCatalog } from './members';
 import { documentPages, MAX_PAGES, pageBlobName, pageExtraction, pageTwinBlobName } from './pages';
-import { emptyCatalog, type ActivityType, type Catalog, type DocKind, type DocumentPage, type Extraction, type PageCopy, type Settings, type VaultDocument } from './types';
+import { emptyCatalog, isDocKind, kindLabel, type ActivityType, type Catalog, type DocumentPage, type Extraction, type PageCopy, type Settings, type VaultDocument } from './types';
 const CATALOG = 'catalog.bin';
 const MAX_ACTIVITY = 180;
 
@@ -21,7 +24,8 @@ export type PageInput = {
 
 export type AddDocumentInput = {
   title: string;
-  kind: DocKind;
+  kind: string;
+  member: string;
   fileName: string;
   mimeType: string;
   bytes: Uint8Array;
@@ -52,6 +56,10 @@ class VaultSession {
       documents: [...this.catalog.documents],
       activity: [...this.catalog.activity],
       settings: { ...this.catalog.settings },
+      members: [...(this.catalog.members ?? [])],
+      categories: [...(this.catalog.categories ?? [])],
+      memberEmoji: { ...(this.catalog.memberEmoji ?? {}) },
+      categoryEmoji: { ...(this.catalog.categoryEmoji ?? {}) },
     };
   }
 
@@ -90,7 +98,7 @@ class VaultSession {
       if (!Array.isArray(parsed.documents) || !Array.isArray(parsed.activity) || !parsed.settings) {
         throw new Error('invalid');
       }
-      return parsed;
+      return settleCatalog(parsed);
     } catch (error) {
       if (error instanceof VaultError) throw error;
       throw new VaultError('The vault catalog failed its integrity check.');
@@ -240,6 +248,24 @@ class VaultSession {
   addDocument(input: AddDocumentInput) {
     return this.enqueue(async () => {
       const key = this.assertOpen();
+      const member = canonicalMember(this.catalog.members ?? [], input.member) || SELF;
+      this.catalog.categories = this.catalog.categories ?? [];
+      const kind = canonicalCategory(this.catalog.categories, input.kind) || 'other';
+      if (
+        !isDocKind(kind) &&
+        this.catalog.categories.length >= CATEGORY_LIMIT &&
+        !this.catalog.categories.some((name) => sameCategory(name, kind))
+      ) {
+        throw new VaultError(`A vault can keep ${CATEGORY_LIMIT} categories you create.`);
+      }
+      this.catalog.members = this.catalog.members ?? [];
+      if (
+        !memberRole(member) &&
+        this.catalog.members.length >= MEMBER_LIMIT &&
+        !this.catalog.members.some((name) => sameMember(name, member))
+      ) {
+        throw new VaultError(`A vault can keep ${MEMBER_LIMIT} family members.`);
+      }
       const incoming = 1 + (input.extraPages?.length ?? 0);
       if (incoming > MAX_PAGES) throw new VaultError(`A document can hold ${MAX_PAGES} pages.`);
       const id = randomUUID();
@@ -249,10 +275,13 @@ class VaultSession {
       ]);
       const first = pages[0];
       if (!first) throw new VaultError('That file is empty.');
+      this.catalog.members = rememberMember(this.catalog.members, member);
+      this.catalog.categories = rememberCategory(this.catalog.categories, kind);
       const doc: VaultDocument = {
         id,
         title: input.title.trim() || 'Untitled document',
-        kind: input.kind,
+        kind: canonicalCategory(this.catalog.categories, kind),
+        member: canonicalMember(this.catalog.members, member),
         fileName: first.fileName,
         mimeType: first.mimeType,
         byteLength: first.byteLength,
@@ -262,9 +291,141 @@ class VaultSession {
         pages: pages.length > 1 ? pages : undefined,
       };
       this.catalog.documents.unshift(doc);
-      this.remember('add', `Sealed ${doc.title}`);
+      this.remember('add', `Sealed ${doc.title} for ${doc.member}`);
       await this.persist();
       return doc;
+    });
+  }
+
+  assignMember(id: string, name: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      this.catalog.members = this.catalog.members ?? [];
+      const member = canonicalMember(this.catalog.members, normalizeMember(name)) || SELF;
+      if (
+        !memberRole(member) &&
+        this.catalog.members.length >= MEMBER_LIMIT &&
+        !this.catalog.members.some((item) => sameMember(item, member))
+      ) {
+        throw new VaultError(`A vault can keep ${MEMBER_LIMIT} family members.`);
+      }
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      this.catalog.members = rememberMember(this.catalog.members, member);
+      const stored = canonicalMember(this.catalog.members, member);
+      if ((doc.member ?? '') === stored) return;
+      this.catalog.documents[index] = { ...doc, member: stored };
+      this.remember('edit', `Filed ${doc.title} under ${stored}`);
+      await this.persist();
+    });
+  }
+
+  assignKind(id: string, name: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      this.catalog.categories = this.catalog.categories ?? [];
+      const kind = canonicalCategory(this.catalog.categories, name);
+      if (!kind) throw new VaultError('Enter a category name.');
+      if (
+        !isDocKind(kind) &&
+        this.catalog.categories.length >= CATEGORY_LIMIT &&
+        !this.catalog.categories.some((item) => sameCategory(item, kind))
+      ) {
+        throw new VaultError(`A vault can keep ${CATEGORY_LIMIT} categories you create.`);
+      }
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      this.catalog.categories = rememberCategory(this.catalog.categories, kind);
+      const stored = canonicalCategory(this.catalog.categories, kind);
+      if (doc.kind === stored) return;
+      this.catalog.documents[index] = { ...doc, kind: stored };
+      this.remember('edit', `Moved ${doc.title} to ${kindLabel(stored)}`);
+      await this.persist();
+    });
+  }
+
+  removeMember(name: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      this.catalog.members = this.catalog.members ?? [];
+      const member = canonicalMember(this.catalog.members, normalizeMember(name));
+      if (!member || memberRole(member)) throw new VaultError('Father, Mother, Brother, Sister, and Self stay in the vault.');
+      if (!this.catalog.members.some((item) => sameMember(item, member))) return;
+      this.catalog.members = this.catalog.members.filter((item) => !sameMember(item, member));
+      if (this.catalog.memberEmoji?.[member]) {
+        const emoji = { ...this.catalog.memberEmoji };
+        delete emoji[member];
+        this.catalog.memberEmoji = emoji;
+      }
+      let moved = 0;
+      this.catalog.documents = this.catalog.documents.map((doc) => {
+        if (!sameMember(doc.member ?? '', member)) return doc;
+        moved += 1;
+        return { ...doc, member: SELF };
+      });
+      this.remember(
+        'delete',
+        moved > 0 ? `Removed ${member}. ${moved} ${moved === 1 ? 'document is' : 'documents are'} filed under Self.` : `Removed ${member}`,
+      );
+      await this.persist();
+    });
+  }
+
+  removeCategory(name: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      this.catalog.categories = this.catalog.categories ?? [];
+      const kind = canonicalCategory(this.catalog.categories, name);
+      if (!kind || isDocKind(kind)) throw new VaultError('The built-in categories stay in the vault.');
+      if (!this.catalog.categories.some((item) => sameCategory(item, kind))) return;
+      this.catalog.categories = this.catalog.categories.filter((item) => !sameCategory(item, kind));
+      if (this.catalog.categoryEmoji?.[kind]) {
+        const emoji = { ...this.catalog.categoryEmoji };
+        delete emoji[kind];
+        this.catalog.categoryEmoji = emoji;
+      }
+      let moved = 0;
+      this.catalog.documents = this.catalog.documents.map((doc) => {
+        if (doc.kind !== kind) return doc;
+        moved += 1;
+        return { ...doc, kind: 'other' };
+      });
+      const label = kindLabel(kind);
+      this.remember(
+        'delete',
+        moved > 0 ? `Removed ${label}. ${moved} ${moved === 1 ? 'document is' : 'documents are'} now Other.` : `Removed ${label}`,
+      );
+      await this.persist();
+    });
+  }
+
+  setMemberEmoji(name: string, emoji: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      if (!isEmojiChoice(emoji)) throw new VaultError('Choose an emoji from the list.');
+      this.catalog.members = this.catalog.members ?? [];
+      this.catalog.memberEmoji = this.catalog.memberEmoji ?? {};
+      const member = canonicalMember(this.catalog.members, name) || SELF;
+      if (this.catalog.memberEmoji[member] === emoji) return;
+      this.catalog.memberEmoji[member] = emoji;
+      this.remember('edit', `Set the picture for ${member}`);
+      await this.persist();
+    });
+  }
+
+  setCategoryEmoji(name: string, emoji: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      if (!isEmojiChoice(emoji)) throw new VaultError('Choose an emoji from the list.');
+      this.catalog.categories = this.catalog.categories ?? [];
+      this.catalog.categoryEmoji = this.catalog.categoryEmoji ?? {};
+      const kind = canonicalCategory(this.catalog.categories, name) || 'other';
+      if (this.catalog.categoryEmoji[kind] === emoji) return;
+      this.catalog.categoryEmoji[kind] = emoji;
+      this.remember('edit', `Set the picture for ${kindLabel(kind)}`);
+      await this.persist();
     });
   }
 
@@ -447,7 +608,7 @@ class VaultSession {
     };
   }
 
-  async openDocument(id: string, pageIndex = 0): Promise<OpenedDocument> {
+  async openDocument(id: string, pageIndex = 0, recordView = true): Promise<OpenedDocument> {
     const key = this.assertOpen();
     const doc = this.catalog.documents.find((item) => item.id === id);
     if (!doc) throw new VaultError('That document is not in the vault.');
@@ -463,7 +624,7 @@ class VaultSession {
     try {
       const plain = await openBytes(key, sealed);
       const hash = await sha256Hex(plain);
-      if (!this.viewed.has(id)) {
+      if (recordView && !this.viewed.has(id)) {
         this.viewed.add(id);
         try {
           await this.enqueue(async () => {

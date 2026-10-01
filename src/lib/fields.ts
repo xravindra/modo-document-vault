@@ -150,7 +150,8 @@ export function parseFields(text: string): ExtractedField[] {
 
 export function inferKind(text: string): DocKind {
   const haystack = text.toLowerCase();
-  if (/passport|driver|national id|identity card/.test(haystack)) return 'identity';
+  if (/passport|driver|national id|identity card|aadhaar|aadhar/.test(haystack)) return 'identity';
+  if (/debit card|atm card|rupay|maestro|visa debit/.test(haystack)) return 'card';
   if (/boarding|itinerary|visa|ticket/.test(haystack)) return 'travel';
   if (/patient|clinic|prescription|health/.test(haystack)) return 'health';
   if (/invoice|account|iban|statement|tax|policy|premium/.test(haystack)) return 'finance';

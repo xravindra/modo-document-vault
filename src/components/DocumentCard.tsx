@@ -4,14 +4,17 @@ import { router, type Href } from 'expo-router';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { ActionIcon } from '@/components/ActionIcon';
+import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
+import { DocumentPreview } from '@/components/DocumentPreview';
 import { PressableScale } from '@/components/ui';
 import { deliverFile, shareDocument } from '@/lib/deliver';
 import { engineLabel, formatBytes, formatWhen } from '@/lib/format';
 import { kindLabel, type VaultDocument } from '@/lib/types';
+import { documentMember } from '@/lib/members';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
-function Card({ doc, swipe = false }: { doc: VaultDocument; swipe?: boolean }) {
+function Card({ doc, swipe = false, showFile = false }: { doc: VaultDocument; swipe?: boolean; showFile?: boolean }) {
   const vault = useVault();
   const swipeRef = useRef<SwipeableMethods>(null);
   const acting = useRef(false);
@@ -51,11 +54,17 @@ function Card({ doc, swipe = false }: { doc: VaultDocument; swipe?: boolean }) {
     <PressableScale
       accessibilityLabel={`Open ${doc.title}`}
       onPress={() => router.push(`/document/${doc.id}` as Href)}
-      style={styles.card}
+      style={[styles.card, showFile ? styles.cardFile : null]}
     >
-      <View style={styles.rule} />
+      {showFile ? <DocumentPreview doc={doc} /> : <View style={styles.rule} />}
       <View style={styles.copy}>
-        <Text style={styles.kind}>{kindLabel(doc.kind)}</Text>
+        <View style={styles.kindRow}>
+          <CategoryAvatar kind={doc.kind} size={22} />
+          <MemberAvatar name={documentMember(doc)} size={22} />
+          <Text numberOfLines={1} style={styles.kind}>
+            {kindLabel(doc.kind)} · {documentMember(doc)}
+          </Text>
+        </View>
         <Text style={styles.title}>{doc.title}</Text>
         <Text style={styles.meta}>
           {note ?? `${formatWhen(doc.createdAt)} · ${formatBytes(doc.byteLength)} · ${engineLabel(doc.extraction.engine)}`}
@@ -109,9 +118,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 12,
   },
+  cardFile: { flexDirection: 'column' },
   rule: { width: 4, backgroundColor: theme.goldDeep },
   copy: { flex: 1, minWidth: 0, paddingHorizontal: 16, paddingVertical: 16 },
+  kindRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   kind: {
+    flex: 1,
+    minWidth: 0,
     color: theme.gold,
     fontFamily: font.semibold,
     fontSize: 11,

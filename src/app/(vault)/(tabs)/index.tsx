@@ -1,17 +1,31 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router, type Href } from 'expo-router';
 
-import { DocumentCard } from '@/components/DocumentCard';
+import { DocumentStack } from '@/components/DocumentStack';
 import { Headline, Kicker, PressableScale, Quiet, Screen, usePrefersReducedMotion } from '@/components/ui';
+import { documentMember, compareMembers } from '@/lib/members';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
 export default function HomeScreen() {
   const vault = useVault();
   const reduced = usePrefersReducedMotion();
-  const recent = [...vault.documents].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4);
   const entering = (delay: number) => (reduced ? undefined : FadeInDown.duration(640).delay(delay));
+  const stacks = useMemo(() => {
+    const groups = new Map<string, typeof vault.documents>();
+    const sorted = [...vault.documents].sort((left, right) => right.createdAt - left.createdAt);
+    for (const doc of sorted) {
+      const name = documentMember(doc);
+      const list = groups.get(name) ?? [];
+      list.push(doc);
+      groups.set(name, list);
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => compareMembers(left, right))
+      .map(([name, documents]) => ({ name, documents }));
+  }, [vault.documents]);
 
   return (
     <Screen>
@@ -49,20 +63,23 @@ export default function HomeScreen() {
         </PressableScale>
       </Animated.View>
 
-      <Text style={styles.section}>Recent</Text>
-      {recent.length > 0 ? <Text style={styles.hint}>Swipe right to download. Swipe left to share.</Text> : null}
-      {recent.length === 0 ? (
+      <Text style={styles.section}>Stacks</Text>
+      {stacks.length > 0 ? (
+        <Text style={styles.hint}>Tap a family member or category to show or hide its files. Swipe a file right to download, left to share.</Text>
+      ) : null}
+      {stacks.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>The shelf is clear</Text>
           <Text style={styles.emptyBody}>Files stay encrypted at rest. The library only keeps titles and the text that was read from them.</Text>
         </View>
       ) : (
-        recent.map((doc) => <DocumentCard key={doc.id} doc={doc} swipe />)
+        stacks.map((stack) => (
+          <DocumentStack key={stack.name} categories={vault.categories} documents={stack.documents} name={stack.name} />
+        ))
       )}
     </Screen>
   );
 }
-
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   lock: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: theme.line },

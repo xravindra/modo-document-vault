@@ -15,6 +15,10 @@ type VaultModel = {
   biometricsReady: boolean;
   bioMode: BioMode;
   documents: VaultDocument[];
+  members: string[];
+  categories: string[];
+  memberEmoji: Record<string, string>;
+  categoryEmoji: Record<string, string>;
   activity: ActivityEvent[];
   settings: Settings;
   error: string | null;
@@ -26,10 +30,16 @@ type VaultApi = VaultModel & {
   unlockWithBiometrics: () => Promise<void>;
   lock: () => Promise<void>;
   addDocument: (input: AddDocumentInput) => Promise<VaultDocument>;
+  assignMember: (id: string, member: string) => Promise<void>;
+  assignKind: (id: string, kind: string) => Promise<void>;
+  setMemberEmoji: (member: string, emoji: string) => Promise<void>;
+  setCategoryEmoji: (kind: string, emoji: string) => Promise<void>;
+  removeMember: (member: string) => Promise<void>;
+  removeCategory: (kind: string) => Promise<void>;
   addPages: (id: string, pages: PageInput[]) => Promise<number>;
   keepAndShow: (id: string, pageIndex: number, page: PageInput, locked: boolean) => Promise<void>;
   togglePageLock: (id: string, pageIndex: number) => Promise<void>;
-  openDocument: (id: string, pageIndex?: number) => ReturnType<typeof session.openDocument>;
+  openDocument: (id: string, pageIndex?: number, recordView?: boolean) => ReturnType<typeof session.openDocument>;
   holdAutoLock: () => void;
   releaseAutoLock: () => void;
   renameDocument: (id: string, fileName: string) => Promise<void>;
@@ -58,6 +68,10 @@ const initial: VaultModel = {
   biometricsReady: false,
   bioMode: 'off',
   documents: [],
+  members: [],
+  categories: [],
+  memberEmoji: {},
+  categoryEmoji: {},
   activity: [],
   settings: emptyCatalog().settings,
   error: null,
@@ -98,6 +112,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       biometricsReady,
       bioMode,
       documents: snap.documents,
+      members: snap.members,
+      categories: snap.categories,
+      memberEmoji: snap.memberEmoji,
+      categoryEmoji: snap.categoryEmoji,
       activity: snap.activity,
       settings: snap.settings,
       error,
@@ -166,6 +184,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await publish('unlocked');
         return doc;
       },
+      assignMember: (id, member) => run(() => session.assignMember(id, member), 'unlocked'),
+      assignKind: (id, kind) => run(() => session.assignKind(id, kind), 'unlocked'),
+      setMemberEmoji: (member, emoji) => run(() => session.setMemberEmoji(member, emoji), 'unlocked'),
+      setCategoryEmoji: (kind, emoji) => run(() => session.setCategoryEmoji(kind, emoji), 'unlocked'),
+      removeMember: (member) => run(() => session.removeMember(member), 'unlocked'),
+      removeCategory: (kind) => run(() => session.removeCategory(kind), 'unlocked'),
       addPages: async (id, pages) => {
         const count = await session.addPages(id, pages);
         await publish('unlocked');
@@ -179,7 +203,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await session.togglePageLock(id, pageIndex);
         await publish('unlocked');
       },
-      openDocument: (id, pageIndex) => session.openDocument(id, pageIndex),
+      openDocument: (id, pageIndex, recordView) => session.openDocument(id, pageIndex, recordView),
       holdAutoLock,
       releaseAutoLock,
       renameDocument: (id, fileName) => run(() => session.renameDocument(id, fileName), 'unlocked'),

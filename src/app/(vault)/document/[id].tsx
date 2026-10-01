@@ -6,11 +6,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { ActionIcon, type ActionName } from '@/components/ActionIcon';
 import { FieldRow } from '@/components/FieldRow';
+import { KindPicker } from '@/components/KindPicker';
+import { MemberPicker } from '@/components/MemberPicker';
 import { PdfFrame } from '@/components/PdfFrame';
+import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
 import { BackButton, Banner, Headline, Kicker, PressableScale, Screen } from '@/components/ui';
 import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
 import { extractDocument } from '@/lib/extract';
 import { engineLabel, formatBytes, shareSummary } from '@/lib/format';
+import { documentMember } from '@/lib/members';
 import { documentPages, MAX_PAGES, pageExtraction } from '@/lib/pages';
 import { lockDocumentFile, pdfIsPasswordProtected, removePdfPassword } from '@/lib/pdfPassword';
 import { pdfPageRatio } from '@/lib/pdfText';
@@ -47,6 +51,8 @@ export default function DocumentScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [memberOpen, setMemberOpen] = useState(false);
+  const [kindOpen, setKindOpen] = useState(false);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const fieldSeq = useRef(0);
@@ -117,6 +123,8 @@ export default function DocumentScreen() {
     setPassword('');
     setConfirmPassword('');
     setMenuOpen(false);
+    setMemberOpen(false);
+    setKindOpen(false);
   }, [id, pageIndex]);
 
   const passwordProtected = useMemo(() => {
@@ -428,8 +436,73 @@ export default function DocumentScreen() {
           <View style={styles.burger} />
         </Pressable>
       </View>
-      <Kicker>{kindLabel(doc.kind)}</Kicker>
+      <PressableScale accessibilityLabel="Change category" onPress={() => setKindOpen((open) => !open)} style={styles.kickerRow}>
+        <CategoryAvatar kind={doc.kind} size={28} />
+        <Kicker>{kindLabel(doc.kind)}</Kicker>
+      </PressableScale>
       <Headline>{doc.title}</Headline>
+      <PressableScale
+        accessibilityLabel={`Change family member, currently ${documentMember(doc)}`}
+        onPress={() => setMemberOpen((open) => !open)}
+        style={styles.categoryRow}
+      >
+        <MemberAvatar name={documentMember(doc)} size={40} />
+        <View style={styles.categoryCopy}>
+          <Text style={styles.categoryLabel}>Family member</Text>
+          <Text style={styles.categoryValue}>{documentMember(doc)}</Text>
+        </View>
+        <Text style={styles.categoryAction}>{memberOpen ? 'Close' : 'Change'}</Text>
+      </PressableScale>
+      {memberOpen ? (
+        <MemberPicker
+          members={vault.members}
+          onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
+          onSelect={(name) => {
+            setMessage(null);
+            void vault
+              .assignMember(doc.id, name)
+              .then(() => {
+                setMemberOpen(false);
+                setMessage(`Filed under ${name}.`);
+              })
+              .catch((error: unknown) => {
+                setMessage(error instanceof Error ? error.message : 'Could not file this document.');
+              });
+          }}
+          selected={doc.member ?? ''}
+        />
+      ) : null}
+      <PressableScale
+        accessibilityLabel={`Change category, currently ${kindLabel(doc.kind)}`}
+        onPress={() => setKindOpen((open) => !open)}
+        style={styles.categoryRow}
+      >
+        <CategoryAvatar kind={doc.kind} size={40} />
+        <View style={styles.categoryCopy}>
+          <Text style={styles.categoryLabel}>Category</Text>
+          <Text style={styles.categoryValue}>{kindLabel(doc.kind)}</Text>
+        </View>
+        <Text style={styles.categoryAction}>{kindOpen ? 'Close' : 'Change'}</Text>
+      </PressableScale>
+      {kindOpen ? (
+        <KindPicker
+          categories={vault.categories}
+          onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
+          onSelect={(kind) => {
+            setMessage(null);
+            void vault
+              .assignKind(doc.id, kind)
+              .then(() => {
+                setKindOpen(false);
+                setMessage(`Category set to ${kindLabel(kind)}.`);
+              })
+              .catch((error: unknown) => {
+                setMessage(error instanceof Error ? error.message : 'Could not change the category.');
+              });
+          }}
+          selected={doc.kind}
+        />
+      ) : null}
       <View style={styles.metaRow}>
         {renaming && pageIndex === 0 ? (
           <TextInput
@@ -649,6 +722,20 @@ export default function DocumentScreen() {
               });
             }}
           />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Change family member"
+            icon="details"
+            label="Change family member"
+            onPress={() => setMemberOpen(true)}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Change category"
+            icon="details"
+            label="Change category"
+            onPress={() => setKindOpen(true)}
+          />
           <ActionButton dismiss={() => setMenuOpen(false)} accessibilityLabel="Add a field" icon="add" label="Add a field" onPress={addField} />
           <ActionButton dismiss={() => setMenuOpen(false)}
             accessibilityLabel="Add a page"
@@ -727,6 +814,40 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   metaRow: { width: '100%', maxWidth: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 },
+  kickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
+  categoryRow: {
+    width: '100%',
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  categoryCopy: { flex: 1, minWidth: 0 },
+  categoryLabel: {
+    color: theme.gold,
+    fontFamily: font.semibold,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  categoryValue: { color: theme.paper, fontFamily: font.medium, fontSize: 16, marginTop: 2 },
+  categoryAction: {
+    color: theme.ink,
+    fontFamily: font.semibold,
+    fontSize: 15,
+    backgroundColor: theme.gold,
+    borderRadius: 12,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   fileNameHit: { maxWidth: '100%', flexShrink: 1, paddingVertical: 2 },
   fileName: {
     color: theme.paper,
