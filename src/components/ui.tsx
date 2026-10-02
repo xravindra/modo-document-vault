@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     aspectRatio: 1,
     borderRadius: 180,
-    backgroundColor: 'rgba(125, 223, 195, 0.08)',
+    backgroundColor: 'rgba(232, 161, 90, 0.1)',
   },
   scroll: { alignItems: 'center', maxWidth: '100%' },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },

@@ -39,12 +39,14 @@ export function PinPad({
   disabled,
   onChange,
   onComplete,
+  sideAction,
 }: {
   value: string;
   length?: number;
   disabled?: boolean;
   onChange: (next: string) => void;
   onComplete: (pin: string) => void;
+  sideAction?: { label: string; onPress: () => void };
 }) {
   const valueRef = useRef(value);
   useEffect(() => {
@@ -74,7 +76,23 @@ export function PinPad({
         <View key={row.join('-')} style={styles.row}>
           {row.map((key) =>
             key === '' ? (
-              <View key="spacer" style={styles.key} />
+              sideAction ? (
+                <PressableScale
+                  key="side"
+                  accessibilityLabel={sideAction.label}
+                  disabled={disabled}
+                  onPress={() => {
+                    if (disabled) return;
+                    hapticTick();
+                    sideAction.onPress();
+                  }}
+                  style={styles.key}
+                >
+                  <BackupMark />
+                </PressableScale>
+              ) : (
+                <View key="spacer" style={styles.key} />
+              )
             ) : (
               <PressableScale
                 key={key}
@@ -89,6 +107,17 @@ export function PinPad({
           )}
         </View>
       ))}
+    </View>
+  );
+}
+
+function BackupMark() {
+  return (
+    <View style={styles.mark}>
+      <View style={styles.markStem} />
+      <View style={styles.markLeft} />
+      <View style={styles.markRight} />
+      <View style={styles.markTray} />
     </View>
   );
 }
@@ -116,4 +145,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   keyText: { color: theme.paper, fontFamily: font.medium, fontSize: 26 },
+  mark: { width: 22, height: 22, alignItems: 'center' },
+  markStem: { width: 2, height: 9, borderRadius: 1, backgroundColor: theme.gold, marginTop: 1 },
+  markLeft: {
+    position: 'absolute',
+    top: 7,
+    left: 5,
+    width: 8,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: theme.gold,
+    transform: [{ rotate: '42deg' }],
+  },
+  markRight: {
+    position: 'absolute',
+    top: 7,
+    right: 5,
+    width: 8,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: theme.gold,
+    transform: [{ rotate: '-42deg' }],
+  },
+  markTray: { position: 'absolute', left: 3, right: 3, bottom: 1, height: 2, borderRadius: 1, backgroundColor: theme.gold },
 });

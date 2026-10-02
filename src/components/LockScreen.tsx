@@ -213,6 +213,10 @@ export function LockScreen() {
               disabled={!!busy || paused}
               onChange={setPin}
               onComplete={(next) => void submit(next)}
+              sideAction={{
+                label: vault.hasVault ? 'Replace from a backup' : 'Restore a backup',
+                onPress: () => void chooseBackup(),
+              }}
             />
             {vault.hasVault && vault.biometricsReady ? (
               <PressableScale
@@ -226,14 +230,6 @@ export function LockScreen() {
                 </Text>
               </PressableScale>
             ) : null}
-            <PressableScale
-              accessibilityLabel={vault.hasVault ? 'Replace from a backup' : 'Restore a backup'}
-              disabled={!!busy || paused}
-              onPress={() => void chooseBackup()}
-              style={styles.bio}
-            >
-              <Text style={styles.bioText}>{vault.hasVault ? 'Replace from a backup' : 'Restore a backup'}</Text>
-            </PressableScale>
           </>
         )}
         {pending ? <Banner message={message || vault.error} /> : null}
@@ -260,7 +256,7 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     aspectRatio: 1,
     borderRadius: 230,
-    backgroundColor: 'rgba(125, 223, 195, 0.1)',
+    backgroundColor: 'rgba(232, 161, 90, 0.12)',
   },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {

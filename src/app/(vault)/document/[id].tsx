@@ -10,7 +10,6 @@ import { ZoomFrame } from '@/components/ZoomFrame';
 import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
 import { PdfFrame } from '@/components/PdfFrame';
-import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
 import { BackButton, Banner, Headline, PressableScale, Screen, goBack } from '@/components/ui';
 import { canEmbedImage, collagePdf, imageToPdf, renamedExtension, type CollageLayout } from '@/lib/convert';
 import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
@@ -57,6 +56,7 @@ export default function DocumentScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [sheet, setSheet] = useState<SheetName | null>(null);
+  const [showMore, setShowMore] = useState(false);
   const [turn, setTurn] = useState(0);
   const [zoomKey, setZoomKey] = useState(0);
   const [zoomed, setZoomed] = useState(false);
@@ -70,6 +70,7 @@ export default function DocumentScreen() {
   useEffect(() => {
     setPageIndex(0);
     setSheet(null);
+    setShowMore(false);
     setCollageExtras([]);
   }, [id]);
 
@@ -133,6 +134,7 @@ export default function DocumentScreen() {
     setPassword('');
     setConfirmPassword('');
     setSheet(null);
+    setShowMore(false);
     setZoomKey((value) => value + 1);
   }, [id, pageIndex]);
 
@@ -669,21 +671,13 @@ export default function DocumentScreen() {
             >
               <Text style={styles.centerText}>Center</Text>
             </PressableScale>
-          ) : doc.favourite ? (
-            <Text style={styles.favMark}>Favourite</Text>
           ) : null}
         </View>
         <Text style={styles.docTitle}>{doc.title}</Text>
-        <View style={styles.chips}>
-          <PressableScale accessibilityLabel={`Family member ${documentMember(doc)}`} onPress={() => setSheet('member')} style={styles.chip}>
-            <MemberAvatar name={documentMember(doc)} size={28} />
-            <Text style={styles.chipText}>{documentMember(doc)}</Text>
-          </PressableScale>
-          <PressableScale accessibilityLabel={`Category ${kindLabel(doc.kind)}`} onPress={() => setSheet('category')} style={styles.chip}>
-            <CategoryAvatar kind={doc.kind} size={28} />
-            <Text style={styles.chipText}>{kindLabel(doc.kind)}</Text>
-          </PressableScale>
-        </View>
+        <Text style={styles.who}>
+          {documentMember(doc)} · {kindLabel(doc.kind)}
+          {doc.favourite ? ' · Favourite' : ''}
+        </Text>
         <Banner message={sheet ? null : message} />
         <View style={styles.stage}>
           <ScrollView
@@ -765,15 +759,14 @@ export default function DocumentScreen() {
             <Text style={styles.dockLabel}>Share</Text>
           </PressableScale>
           <PressableScale
-            accessibilityLabel={`Download ${shownName}`}
-            disabled={!plain || integrity !== 'ok'}
-            onPress={() => void download()}
-            style={styles.dockButton}
+            accessibilityLabel="Document actions"
+            onPress={() => {
+              setShowMore(false);
+              setSheet('edit');
+            }}
+            style={styles.dockEdit}
           >
-            <Text style={styles.dockLabel}>Download</Text>
-          </PressableScale>
-          <PressableScale accessibilityLabel="Edit this document" onPress={() => setSheet('edit')} style={styles.dockEdit}>
-            <Text style={styles.dockEditLabel}>Edit</Text>
+            <Text style={styles.dockEditLabel}>Actions</Text>
           </PressableScale>
         </View>
       </View>
@@ -784,8 +777,8 @@ export default function DocumentScreen() {
             <View style={styles.grabber} />
             <View style={styles.sheetHead}>
               {sheet !== 'edit' ? (
-                <PressableScale accessibilityLabel="Back to edits" onPress={() => setSheet('edit')} style={styles.sheetLink}>
-                  <Text style={styles.sheetLinkText}>Edits</Text>
+                <PressableScale accessibilityLabel="Back to actions" onPress={() => setSheet('edit')} style={styles.sheetLink}>
+                  <Text style={styles.sheetLinkText}>Actions</Text>
                 </PressableScale>
               ) : (
                 <View style={styles.sheetLink} />
@@ -803,7 +796,7 @@ export default function DocumentScreen() {
                         ? 'Category'
                         : sheet === 'rename'
                           ? 'Rename'
-                          : 'Edit'}
+                          : 'Actions'}
               </Text>
               <PressableScale accessibilityLabel="Close" onPress={() => setSheet(null)} style={styles.sheetLink}>
                 <Text style={styles.sheetLinkText}>Close</Text>
@@ -812,112 +805,109 @@ export default function DocumentScreen() {
             {message ? <Text style={styles.sheetMessage}>{message}</Text> : null}
             <ScrollView bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetBody}>
               {sheet === 'edit' ? (
-                <View style={styles.tileGrid}>
-                  <Text style={styles.sectionLabel}>Page</Text>
-                  <Tile accessibilityLabel="Rotate document" detail="Quarter turn" label="Rotate" onPress={() => void rotateDocument()} />
-                  <Tile
-                    accessibilityLabel={imageFile ? 'Convert this image to a PDF' : 'Convert this PDF to an image'}
-                    detail={busyCopy === 'convert' ? 'Working…' : imageFile ? 'Save a PDF' : pdfFile ? 'First page' : 'Unavailable'}
-                    disabled={busyCopy !== null || !plain || integrity !== 'ok' || showingLocked || (!imageFile && !pdfFile)}
-                    label={imageFile ? 'To PDF' : 'To image'}
-                    onPress={() => void convertFile()}
-                    tone="mint"
+                <View>
+                  <Row
+                    accessibilityLabel={`Download ${shownName}`}
+                    disabled={!plain || integrity !== 'ok'}
+                    label="Download"
+                    onPress={() => void download()}
                   />
-                  <Tile accessibilityLabel="Make a collage" detail="JPEG or PNG" label="Collage" onPress={() => setSheet('collage')} tone="mint" />
-                  <Tile
-                    accessibilityLabel="Save a copy of this document"
-                    detail={busyCopy === 'duplicate' ? 'Working…' : 'New document'}
-                    disabled={busyCopy !== null || integrity !== 'ok'}
-                    label="Duplicate"
-                    onPress={() => void duplicateFile()}
-                  />
-                  <Tile
-                    accessibilityLabel="Add a page"
-                    detail={adding ? 'Adding…' : `${pages.length} of ${MAX_PAGES}`}
-                    disabled={adding}
-                    label="Add page"
-                    onPress={() => void addPages()}
-                  />
-                  <Text style={styles.sectionLabel}>Text</Text>
-                  <Tile
-                    accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
-                    detail="Wording"
-                    label={extracted.noiseCleared ? 'Original text' : 'Clear noise'}
-                    onPress={() => void toggleNoise()}
-                  />
-                  <Tile
-                    accessibilityLabel={`Extract text from ${shownName}`}
-                    detail={extracting ? 'Reading…' : 'On this device'}
-                    disabled={extracting || !plain || integrity !== 'ok'}
-                    label="Extract"
-                    onPress={() => void extractText()}
-                  />
-                  <Tile accessibilityLabel="Reset document to the original" detail="View and text" label="Reset" onPress={() => void resetDocument()} />
-                  <Tile
-                    accessibilityLabel="Save extracted fields"
-                    detail={saving ? 'Saving…' : 'This page'}
-                    disabled={saving}
-                    label="Save fields"
-                    onPress={() => void saveFields()}
-                  />
-                  <Tile accessibilityLabel="Add a field" detail="Blank row" label="Add field" onPress={addField} />
-                  {fields.length > 0 ? (
-                    <Tile accessibilityLabel={`Share details from ${doc.title}`} detail="Text only" label="Share details" onPress={() => void shareDetails()} />
-                  ) : null}
-                  <Text style={styles.sectionLabel}>File</Text>
-                  <Tile
+                  <Row accessibilityLabel="Rotate document" label="Rotate" onPress={() => void rotateDocument()} />
+                  <Row
                     accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
-                    detail={doc.favourite ? 'Saved' : 'Mark it'}
-                    label={doc.favourite ? 'Unfavourite' : 'Favourite'}
+                    label={doc.favourite ? 'Remove favourite' : 'Favourite'}
                     onPress={() => void vault.toggleFavourite(doc.id)}
-                    tone="mint"
                   />
-                  <Tile
-                    accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
-                    detail={unlocking ? 'Working…' : hasTwin ? 'Switch copy' : 'Password'}
-                    disabled={unlocking || !plain || integrity !== 'ok'}
-                    label={showingLocked ? 'Unlock' : 'Lock'}
-                    onPress={() => {
-                      setMessage(null);
-                      if (hasTwin) {
-                        void switchCopy();
-                        return;
-                      }
-                      setPassword('');
-                      setConfirmPassword('');
-                      setSheet('lock');
-                    }}
-                  />
-                  <Tile accessibilityLabel="Change family member" detail={documentMember(doc)} label="Family" onPress={() => setSheet('member')} />
-                  <Tile accessibilityLabel="Change category" detail={kindLabel(doc.kind)} label="Category" onPress={() => setSheet('category')} />
-                  <Tile
-                    accessibilityLabel={`Rename ${shownName}`}
-                    detail={pageIndex === 0 ? shownName : 'First page'}
-                    disabled={pageIndex !== 0}
-                    label="Rename"
-                    onPress={() => {
-                      beginRename();
-                      setSheet('rename');
-                    }}
-                  />
-                  <Tile
-                    accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
-                    detail={deletingPage ? 'Deleting…' : `Page ${shownIndex + 1}`}
-                    disabled={deletingPage || removing}
-                    label="Delete page"
-                    onPress={() => void deletePage()}
-                    tone="danger"
-                    wide
-                  />
-                  <Tile
+                  <Row accessibilityLabel="Change family member" label={documentMember(doc)} onPress={() => setSheet('member')} />
+                  <Row
                     accessibilityLabel={`Delete document ${doc.title}`}
-                    detail={removing ? 'Removing…' : 'Whole document'}
                     disabled={removing || deletingPage}
-                    label="Delete document"
+                    label={removing ? 'Removing…' : 'Delete'}
                     onPress={() => void remove()}
                     tone="danger"
-                    wide
                   />
+                  <Row
+                    accessibilityLabel={showMore ? 'Hide extra actions' : 'Show more actions'}
+                    label={showMore ? 'Hide more' : 'More'}
+                    onPress={() => setShowMore((open) => !open)}
+                  />
+                  {showMore ? (
+                    <View>
+                      <Row
+                        accessibilityLabel={imageFile ? 'Convert this image to a PDF' : 'Convert this PDF to an image'}
+                        disabled={busyCopy !== null || !plain || integrity !== 'ok' || showingLocked || (!imageFile && !pdfFile)}
+                        label={busyCopy === 'convert' ? 'Converting…' : imageFile ? 'Make a PDF' : pdfFile ? 'Make an image' : 'Convert'}
+                        onPress={() => void convertFile()}
+                      />
+                      <Row accessibilityLabel="Make a collage" label="Collage" onPress={() => setSheet('collage')} />
+                      <Row
+                        accessibilityLabel="Save a copy of this document"
+                        disabled={busyCopy !== null || integrity !== 'ok'}
+                        label={busyCopy === 'duplicate' ? 'Copying…' : 'Duplicate'}
+                        onPress={() => void duplicateFile()}
+                      />
+                      <Row
+                        accessibilityLabel="Add a page"
+                        disabled={adding}
+                        label={adding ? 'Adding…' : 'Add a page'}
+                        onPress={() => void addPages()}
+                      />
+                      <Row
+                        accessibilityLabel={`Extract text from ${shownName}`}
+                        disabled={extracting || !plain || integrity !== 'ok'}
+                        label={extracting ? 'Reading…' : 'Read the text'}
+                        onPress={() => void extractText()}
+                      />
+                      <Row
+                        accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
+                        label={extracted.noiseCleared ? 'Show original text' : 'Hide noisy lines'}
+                        onPress={() => void toggleNoise()}
+                      />
+                      <Row accessibilityLabel="Reset document to the original" label="Reset" onPress={() => void resetDocument()} />
+                      <Row
+                        accessibilityLabel="Save extracted fields"
+                        disabled={saving}
+                        label={saving ? 'Saving…' : 'Save details'}
+                        onPress={() => void saveFields()}
+                      />
+                      <Row accessibilityLabel="Add a field" label="Add a detail" onPress={addField} />
+                      {fields.length > 0 ? (
+                        <Row accessibilityLabel={`Share details from ${doc.title}`} label="Share details" onPress={() => void shareDetails()} />
+                      ) : null}
+                      <Row
+                        accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
+                        disabled={unlocking || !plain || integrity !== 'ok'}
+                        label={unlocking ? 'Working…' : showingLocked ? 'Unlock' : 'Lock with a password'}
+                        onPress={() => {
+                          setMessage(null);
+                          if (hasTwin) {
+                            void switchCopy();
+                            return;
+                          }
+                          setPassword('');
+                          setConfirmPassword('');
+                          setSheet('lock');
+                        }}
+                      />
+                      <Row accessibilityLabel="Change category" label={kindLabel(doc.kind)} onPress={() => setSheet('category')} />
+                      <Row
+                        accessibilityLabel={`Rename ${shownName}`}
+                        disabled={pageIndex !== 0}
+                        label="Rename"
+                        onPress={() => {
+                          beginRename();
+                          setSheet('rename');
+                        }}
+                      />
+                      <Row
+                        accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
+                        disabled={deletingPage || removing}
+                        label={deletingPage ? 'Deleting…' : 'Delete this page'}
+                        onPress={() => void deletePage()}
+                        tone="danger"
+                      />
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
               {sheet === 'collage' ? (
@@ -1076,21 +1066,17 @@ export default function DocumentScreen() {
   );
 }
 
-function Tile({
+function Row({
   label,
-  detail,
   onPress,
   disabled,
   tone = 'plain',
-  wide = false,
   accessibilityLabel,
 }: {
   label: string;
-  detail?: string;
   onPress: () => void;
   disabled?: boolean;
-  tone?: 'plain' | 'mint' | 'danger';
-  wide?: boolean;
+  tone?: 'plain' | 'danger';
   accessibilityLabel: string;
 }) {
   return (
@@ -1098,14 +1084,9 @@ function Tile({
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
-      style={[styles.tile, wide ? styles.tileWide : null, tone === 'danger' ? styles.tileDanger : null, disabled ? styles.tileOff : null]}
+      style={[styles.row, disabled ? styles.rowOff : null]}
     >
-      <Text style={[styles.tileLabel, tone === 'mint' ? styles.tileLabelMint : null, tone === 'danger' ? styles.tileLabelDanger : null]}>{label}</Text>
-      {detail ? (
-        <Text numberOfLines={1} style={styles.tileDetail}>
-          {detail}
-        </Text>
-      ) : null}
+      <Text style={[styles.rowLabel, tone === 'danger' ? styles.rowDanger : null]}>{label}</Text>
     </PressableScale>
   );
 }
@@ -1117,20 +1098,8 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   centerHit: { borderRadius: 999, backgroundColor: theme.paper, paddingHorizontal: 14, paddingVertical: 8 },
   centerText: { color: theme.ink, fontFamily: font.semibold, fontSize: 14 },
-  favMark: { color: theme.gold, fontFamily: font.semibold, fontSize: 13, letterSpacing: 0.4 },
   docTitle: { color: theme.paper, fontFamily: font.display, fontSize: 34, lineHeight: 38, marginTop: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 44,
-    paddingLeft: 8,
-    paddingRight: 14,
-    borderRadius: 999,
-    backgroundColor: theme.inkRaised,
-  },
-  chipText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  who: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15, marginTop: 8 },
   stage: {
     marginTop: 18,
     borderRadius: 28,
@@ -1216,13 +1185,22 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingHorizontal: 16,
   },
-  grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(125, 223, 195, 0.45)', marginBottom: 8 },
+  grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(232, 161, 90, 0.55)', marginBottom: 8 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   sheetTitle: { color: theme.paper, fontFamily: font.display, fontSize: 28 },
   sheetLink: { minWidth: 64, minHeight: 44, justifyContent: 'center' },
   sheetLinkText: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
   sheetMessage: { color: theme.gold, fontFamily: font.medium, fontSize: 14, lineHeight: 20, marginBottom: 8 },
   sheetBody: { paddingBottom: 12 },
+  row: {
+    minHeight: 56,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.line,
+  },
+  rowOff: { opacity: 0.4 },
+  rowLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 17 },
+  rowDanger: { color: theme.danger },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   sectionLabel: {
     width: '100%',

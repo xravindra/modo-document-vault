@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 
+import { EveryoneFigure, PersonFigure } from '@/components/Avatar';
 import { DocumentStack } from '@/components/DocumentStack';
 import { PressableScale, Screen } from '@/components/ui';
 import { compareMembers, documentMember } from '@/lib/members';
@@ -52,17 +53,23 @@ export default function HomeScreen() {
         style={styles.search}
         value={query}
       />
-      {people.length > 1 ? (
-        <View style={styles.filters}>
-          <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.nameHit}>
-            <Text style={[styles.nameText, person === 'all' ? styles.nameOn : null]}>Everyone</Text>
+      {people.length > 0 ? (
+        <ScrollView horizontal contentContainerStyle={styles.filters} showsHorizontalScrollIndicator={false}>
+          <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.person}>
+            <EveryoneFigure selected={person === 'all'} />
+            <Text numberOfLines={1} style={[styles.nameText, person === 'all' ? styles.nameOn : null]}>
+              All
+            </Text>
           </PressableScale>
           {people.map((name) => (
-            <PressableScale key={name} accessibilityLabel={name} onPress={() => setPerson(name)} style={styles.nameHit}>
-              <Text style={[styles.nameText, person === name ? styles.nameOn : null]}>{name}</Text>
+            <PressableScale key={name} accessibilityLabel={name} onPress={() => setPerson(name)} style={styles.person}>
+              <PersonFigure name={name} selected={person === name} />
+              <Text numberOfLines={1} style={[styles.nameText, person === name ? styles.nameOn : null]}>
+                {name}
+              </Text>
             </PressableScale>
           ))}
-        </View>
+        </ScrollView>
       ) : null}
       {documents.length === 0 ? (
         <View style={styles.empty}>
@@ -114,9 +121,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 12,
   },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
-  nameHit: { paddingVertical: 6, paddingRight: 8 },
-  nameText: { color: theme.paperFaint, fontFamily: font.medium, fontSize: 16 },
+  filters: { flexDirection: 'row', gap: 14, paddingTop: 18, paddingRight: 8 },
+  person: { width: 72, alignItems: 'center', gap: 6 },
+  nameText: { color: theme.paperDim, fontFamily: font.medium, fontSize: 12, textAlign: 'center', maxWidth: 72 },
   nameOn: { color: theme.gold },
   list: { marginTop: 26 },
   empty: { marginTop: 48 },
