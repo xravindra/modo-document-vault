@@ -5,7 +5,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
 
-import { ActionIcon, type ActionName } from '@/components/ActionIcon';
 import { FieldRow } from '@/components/FieldRow';
 import { ZoomFrame } from '@/components/ZoomFrame';
 import { KindPicker } from '@/components/KindPicker';
@@ -32,6 +31,8 @@ import { session } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
+type SheetName = 'edit' | 'collage' | 'lock' | 'member' | 'category' | 'rename';
+
 export default function DocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const vault = useVault();
@@ -47,24 +48,19 @@ export default function DocumentScreen() {
   const [removing, setRemoving] = useState(false);
   const [deletingPage, setDeletingPage] = useState(false);
   const [imageRatio, setImageRatio] = useState<number | null>(null);
-  const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [askPassword, setAskPassword] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheet, setSheet] = useState<SheetName | null>(null);
   const [turn, setTurn] = useState(0);
   const [zoomKey, setZoomKey] = useState(0);
   const [zoomed, setZoomed] = useState(false);
-  const [memberOpen, setMemberOpen] = useState(false);
-  const [kindOpen, setKindOpen] = useState(false);
   const [busyCopy, setBusyCopy] = useState<'convert' | 'duplicate' | 'collage' | null>(null);
-  const [collageOpen, setCollageOpen] = useState(false);
   const [collageLayout, setCollageLayout] = useState<CollageLayout>('row');
   const [collageExtras, setCollageExtras] = useState<{ bytes: Uint8Array; mime: string }[]>([]);
   const { width, height } = useWindowDimensions();
@@ -73,14 +69,13 @@ export default function DocumentScreen() {
 
   useEffect(() => {
     setPageIndex(0);
-    setCollageOpen(false);
+    setSheet(null);
     setCollageExtras([]);
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     setImageRatio(null);
-    setRenaming(false);
     setPreview(null);
     setPlain(null);
     setIntegrity('checking');
@@ -135,12 +130,9 @@ export default function DocumentScreen() {
   }, [doc, pageIndex]);
 
   useEffect(() => {
-    setAskPassword(false);
     setPassword('');
     setConfirmPassword('');
-    setMenuOpen(false);
-    setMemberOpen(false);
-    setKindOpen(false);
+    setSheet(null);
     setZoomKey((value) => value + 1);
   }, [id, pageIndex]);
 
@@ -170,15 +162,13 @@ export default function DocumentScreen() {
   const collageCount = (plain && canEmbedImage(mime) ? 1 : 0) + collageExtras.length;
 
   function beginRename() {
-    if (!doc || renaming || pageIndex !== 0) return;
+    if (!doc || pageIndex !== 0) return;
     setDraftName(doc.fileName);
-    setRenaming(true);
   }
 
   async function commitRename() {
     if (!doc) return;
     const next = draftName.trim();
-    setRenaming(false);
     if (!next || next === doc.fileName) return;
     setMessage(null);
     try {
@@ -282,7 +272,7 @@ export default function DocumentScreen() {
     };
     await vault.saveExtraction(doc.id, extraction, pageIndex);
     setFields(extraction.fields.map((field) => ({ ...field })));
-    setMessage(cleared ? 'Hid noisy lines. Open More to show the original text.' : 'Showing the original text.');
+    setMessage(cleared ? 'Hid noisy lines. Open Edit to show the original text.' : 'Showing the original text.');
   }
 
   async function rotateDocument() {
@@ -344,10 +334,12 @@ export default function DocumentScreen() {
       if (image) {
         const bytes = await imageToPdf(plain, mime);
         await sealSibling(`${doc.title} PDF`, renamedExtension(fileName || doc.fileName, 'pdf'), 'application/pdf', bytes);
+        setSheet(null);
         setMessage('Saved a PDF copy in the vault.');
       } else {
         const bytes = await pdfToJpeg(plain);
         await sealSibling(`${doc.title} image`, renamedExtension(fileName || doc.fileName, 'jpg'), 'image/jpeg', bytes);
+        setSheet(null);
         setMessage('Saved an image of the first page in the vault.');
       }
     } catch (error) {
@@ -393,6 +385,7 @@ export default function DocumentScreen() {
         },
         extraPages: inputs.slice(1),
       });
+      setSheet(null);
       setMessage('Saved a copy in the vault.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not copy this document.');
@@ -452,7 +445,7 @@ export default function DocumentScreen() {
     try {
       const bytes = await collagePdf(tiles, collageLayout);
       await sealSibling(`${doc.title} collage`, renamedExtension(fileName || doc.fileName, 'pdf'), 'application/pdf', bytes);
-      setCollageOpen(false);
+      setSheet(null);
       setCollageExtras([]);
       setMessage('Saved the collage in the vault.');
     } catch (error) {
@@ -538,7 +531,6 @@ export default function DocumentScreen() {
     vault.holdAutoLock();
     try {
       await vault.togglePageLock(doc.id, pageIndex);
-      setAskPassword(false);
       setPassword('');
       setConfirmPassword('');
       setRevision((current) => current + 1);
@@ -591,7 +583,7 @@ export default function DocumentScreen() {
       }
       setPassword('');
       setConfirmPassword('');
-      setAskPassword(false);
+      setSheet(null);
       setRevision((current) => current + 1);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not change the lock on this file.');
@@ -615,6 +607,7 @@ export default function DocumentScreen() {
         return;
       }
       setPageIndex((current) => Math.min(current, currentPages.length - 2));
+      setSheet(null);
       setMessage('Deleted this page.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not delete this page.');
@@ -657,13 +650,14 @@ export default function DocumentScreen() {
   }
 
   return (
-    <Screen>
-      <BackButton label="Documents" style={styles.backInBar} />
-      <View style={styles.titleRow}>
-        <View style={styles.titleCopy}>
-          <Headline>{doc.title}</Headline>
-        </View>
-        <View style={styles.titleActions}>
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[styles.column, { width: Math.min(width, 560), paddingBottom: insets.bottom + 128 }]}
+        keyboardShouldPersistTaps="handled"
+        style={styles.scroll}
+      >
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <BackButton label="Back" />
           {zoomed ? (
             <PressableScale
               accessibilityLabel="Recenter document"
@@ -675,738 +669,629 @@ export default function DocumentScreen() {
             >
               <Text style={styles.centerText}>Center</Text>
             </PressableScale>
+          ) : doc.favourite ? (
+            <Text style={styles.favMark}>Favourite</Text>
           ) : null}
         </View>
-      </View>
-      <View style={styles.quick}>
-        <PressableScale
-          accessibilityLabel={`Share ${shownName}`}
-          disabled={!plain || integrity !== 'ok'}
-          onPress={() => void shareFile()}
-          style={styles.quickPrimary}
-        >
-          <Text style={styles.quickPrimaryText}>Share</Text>
-        </PressableScale>
-        <PressableScale
-          accessibilityLabel={`Download ${shownName}`}
-          disabled={!plain || integrity !== 'ok'}
-          onPress={() => void download()}
-          style={styles.quickSecondary}
-        >
-          <Text style={styles.quickSecondaryText}>Download</Text>
-        </PressableScale>
-        <PressableScale accessibilityLabel="More actions" onPress={() => setMenuOpen(true)} style={styles.quickSecondary}>
-          <Text style={styles.quickSecondaryText}>More</Text>
-        </PressableScale>
-      </View>
-      {collageOpen ? (
-        <View style={styles.collageBox}>
-          <Text style={styles.collageTitle}>Collage</Text>
-          <Text style={styles.collageNote}>Side by side or a grid. JPEG and PNG only. The collage is saved as a new PDF.</Text>
-          <View style={styles.collageLayouts}>
-            <PressableScale
-              accessibilityLabel="Side by side collage"
-              onPress={() => setCollageLayout('row')}
-              style={[styles.collageChip, collageLayout === 'row' ? styles.collageChipOn : null]}
-            >
-              <Text style={[styles.collageChipText, collageLayout === 'row' ? styles.collageChipTextOn : null]}>Side by side</Text>
-            </PressableScale>
-            <PressableScale
-              accessibilityLabel="Grid collage"
-              onPress={() => setCollageLayout('grid')}
-              style={[styles.collageChip, collageLayout === 'grid' ? styles.collageChipOn : null]}
-            >
-              <Text style={[styles.collageChipText, collageLayout === 'grid' ? styles.collageChipTextOn : null]}>Grid</Text>
-            </PressableScale>
-          </View>
-          <Text style={styles.collageCount}>{Math.min(collageCount, 4)} images ready</Text>
-          <View style={styles.collageActions}>
-            <PressableScale accessibilityLabel="Add photos to the collage" onPress={() => void addCollagePhotos()} style={styles.quickSecondary}>
-              <Text style={styles.quickSecondaryText}>Add photos</Text>
-            </PressableScale>
-            <PressableScale
-              accessibilityLabel="Save collage"
-              disabled={busyCopy !== null}
-              onPress={() => void saveCollage()}
-              style={styles.quickPrimary}
-            >
-              <Text style={styles.quickPrimaryText}>{busyCopy === 'collage' ? 'Saving…' : 'Save collage'}</Text>
-            </PressableScale>
-            <PressableScale
-              accessibilityLabel="Close collage"
-              onPress={() => {
-                setCollageOpen(false);
-                setCollageExtras([]);
-              }}
-              style={styles.quickSecondary}
-            >
-              <Text style={styles.quickSecondaryText}>Close</Text>
-            </PressableScale>
-          </View>
-        </View>
-      ) : null}
-      <PressableScale
-        accessibilityLabel={`Change family member, currently ${documentMember(doc)}`}
-        onPress={() => setMemberOpen((open) => !open)}
-        style={styles.categoryRow}
-      >
-        <MemberAvatar name={documentMember(doc)} size={40} />
-        <View style={styles.categoryCopy}>
-          <Text style={styles.categoryLabel}>Family member</Text>
-          <Text style={styles.categoryValue}>{documentMember(doc)}</Text>
-        </View>
-        <Text style={styles.categoryAction}>{memberOpen ? 'Close' : 'Change'}</Text>
-      </PressableScale>
-      {memberOpen ? (
-        <MemberPicker
-          members={vault.members}
-          onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
-          onSelect={(name) => {
-            setMessage(null);
-            void vault
-              .assignMember(doc.id, name)
-              .then(() => {
-                setMemberOpen(false);
-                setMessage(`Filed under ${name}.`);
-              })
-              .catch((error: unknown) => {
-                setMessage(error instanceof Error ? error.message : 'Could not file this document.');
-              });
-          }}
-          selected={doc.member ?? ''}
-        />
-      ) : null}
-      <PressableScale
-        accessibilityLabel={`Change category, currently ${kindLabel(doc.kind)}`}
-        onPress={() => setKindOpen((open) => !open)}
-        style={styles.categoryRow}
-      >
-        <CategoryAvatar kind={doc.kind} size={40} />
-        <View style={styles.categoryCopy}>
-          <Text style={styles.categoryLabel}>Category</Text>
-          <Text style={styles.categoryValue}>{kindLabel(doc.kind)}</Text>
-        </View>
-        <Text style={styles.categoryAction}>{kindOpen ? 'Close' : 'Change'}</Text>
-      </PressableScale>
-      {kindOpen ? (
-        <KindPicker
-          categories={vault.categories}
-          onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
-          onSelect={(kind) => {
-            setMessage(null);
-            void vault
-              .assignKind(doc.id, kind)
-              .then(() => {
-                setKindOpen(false);
-                setMessage(`Category set to ${kindLabel(kind)}.`);
-              })
-              .catch((error: unknown) => {
-                setMessage(error instanceof Error ? error.message : 'Could not change the category.');
-              });
-          }}
-          selected={doc.kind}
-        />
-      ) : null}
-      <View style={styles.metaRow}>
-        {renaming && pageIndex === 0 ? (
-          <TextInput
-            accessibilityLabel="File name"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus
-            onBlur={() => void commitRename()}
-            onChangeText={setDraftName}
-            onSubmitEditing={() => void commitRename()}
-            style={styles.fileInput}
-            value={draftName}
-          />
-        ) : pageIndex === 0 ? (
-          <PressableScale accessibilityLabel={`Rename ${shownName}`} onPress={beginRename} style={styles.fileNameHit}>
-            <Text style={styles.fileName}>{shownName}</Text>
+        <Text style={styles.docTitle}>{doc.title}</Text>
+        <View style={styles.chips}>
+          <PressableScale accessibilityLabel={`Family member ${documentMember(doc)}`} onPress={() => setSheet('member')} style={styles.chip}>
+            <MemberAvatar name={documentMember(doc)} size={28} />
+            <Text style={styles.chipText}>{documentMember(doc)}</Text>
           </PressableScale>
-        ) : (
-          <Text style={styles.meta}>{shownName}</Text>
-        )}
-        <Text style={styles.meta}>
-          {' · '}
-          {formatBytes(page?.byteLength ?? doc.byteLength)} · {engineLabel(extracted.engine)}
-        </Text>
-      </View>
-      {pages.length > 1 ? (
-        <View style={styles.pager}>
+          <PressableScale accessibilityLabel={`Category ${kindLabel(doc.kind)}`} onPress={() => setSheet('category')} style={styles.chip}>
+            <CategoryAvatar kind={doc.kind} size={28} />
+            <Text style={styles.chipText}>{kindLabel(doc.kind)}</Text>
+          </PressableScale>
+        </View>
+        <Banner message={sheet ? null : message} />
+        <View style={styles.stage}>
+          <ScrollView
+            horizontal
+            contentContainerStyle={styles.previewScrollContent}
+            showsHorizontalScrollIndicator={false}
+            style={{ height: face.height }}
+          >
+            <View style={[styles.previewCard, { width: face.width, height: face.height }]}>
+              {preview ? (
+                <ZoomFrame onSwipe={pages.length > 1 ? changePage : undefined} onZoomed={setZoomed} resetKey={zoomKey} rotation={turn}>
+                  {mime.startsWith('image/') ? (
+                    <Image accessibilityLabel="Document preview" resizeMode="contain" source={{ uri: preview }} style={styles.previewFill} />
+                  ) : null}
+                  {mime.includes('pdf') && plain ? <PdfFrame resetKey={zoomKey} uri={preview} ratio={pdfPageRatio(plain)} /> : null}
+                  {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
+                    <Text style={styles.fileFace}>{extracted.text || doc.title}</Text>
+                  ) : null}
+                </ZoomFrame>
+              ) : (
+                <Text style={styles.fileFace}>{integrity === 'checking' ? 'Opening…' : extracted.text || doc.title}</Text>
+              )}
+            </View>
+          </ScrollView>
+          <View style={styles.caption}>
+            <Text numberOfLines={1} style={styles.captionName}>
+              {shownName}
+            </Text>
+            <Text style={styles.captionMeta}>
+              {formatBytes(page?.byteLength ?? doc.byteLength)}
+              {' · '}
+              {integrity === 'checking' ? 'Checking' : integrity === 'ok' ? 'Checked' : 'Could not verify'}
+              {' · '}
+              {engineLabel(extracted.engine)}
+            </Text>
+          </View>
+          {pages.length > 1 ? (
+            <ScrollView horizontal contentContainerStyle={styles.pager} showsHorizontalScrollIndicator={false}>
+              {pages.map((item, index) => (
+                <PressableScale
+                  key={`${item.fileName}-${index}`}
+                  accessibilityLabel={`Page ${index + 1}`}
+                  onPress={() => setPageIndex(index)}
+                  style={[styles.pagePill, index === shownIndex ? styles.pagePillOn : null]}
+                >
+                  <Text style={[styles.pagePillText, index === shownIndex ? styles.pagePillTextOn : null]}>{index + 1}</Text>
+                </PressableScale>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+        {extracted.note ? <Text style={styles.note}>{extracted.note}</Text> : null}
+        <Text style={styles.detailsTitle}>{fields.length > 0 ? 'Details' : 'No details on this page'}</Text>
+        {fields.map((field, index) => (
+          <FieldRow
+            key={`${shownIndex}-${field.key}`}
+            label={field.label}
+            onChangeLabel={(label) => {
+              setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, label } : item)));
+            }}
+            onChangeValue={(value) => {
+              setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, value } : item)));
+            }}
+            onDelete={() => {
+              setFields((current) => current.filter((_, itemIndex) => itemIndex !== index));
+            }}
+            value={field.value}
+          />
+        ))}
+      </ScrollView>
+      <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.dockInner, { width: Math.min(width, 560) }]}>
           <PressableScale
-            accessibilityLabel="Previous page"
-            disabled={pageIndex === 0}
-            onPress={() => setPageIndex((current) => Math.max(0, current - 1))}
-            style={styles.pageStep}
-          >
-            <Text style={[styles.pageStepText, pageIndex === 0 ? styles.pageStepOff : null]}>Previous</Text>
-          </PressableScale>
-          <Text style={styles.pageCount}>
-            Page {pageIndex + 1} of {pages.length}. Swipe the page sideways.
-          </Text>
-          <PressableScale
-            accessibilityLabel="Next page"
-            disabled={pageIndex >= pages.length - 1}
-            onPress={() => setPageIndex((current) => Math.min(pages.length - 1, current + 1))}
-            style={styles.pageStep}
-          >
-            <Text style={[styles.pageStepText, pageIndex >= pages.length - 1 ? styles.pageStepOff : null]}>Next</Text>
-          </PressableScale>
-        </View>
-      ) : null}
-      <View style={[styles.badge, integrity === 'failed' ? styles.badgeBad : null]}>
-        <Text style={styles.badgeText}>
-          {integrity === 'checking'
-            ? 'Checking integrity…'
-            : integrity === 'ok'
-              ? 'Checked'
-              : 'This file could not be verified.'}
-        </Text>
-      </View>
-      <Banner message={message} />
-      {preview ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.previewScroll, { height: face.height }]} contentContainerStyle={styles.previewScrollContent}>
-        <View style={[styles.previewCard, { width: face.width, height: face.height }]}>
-          <ZoomFrame onSwipe={pages.length > 1 ? changePage : undefined} onZoomed={setZoomed} resetKey={zoomKey} rotation={turn}>
-            {mime.startsWith('image/') ? (
-              <Image
-                accessibilityLabel="Document preview"
-                resizeMode="contain"
-                source={{ uri: preview }}
-                style={styles.previewFill}
-              />
-            ) : null}
-            {mime.includes('pdf') && plain ? <PdfFrame resetKey={zoomKey} uri={preview} ratio={pdfPageRatio(plain)} /> : null}
-            {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
-              <Text style={styles.fileFace}>{extracted.text || doc.title}</Text>
-            ) : null}
-          </ZoomFrame>
-        </View>
-        </ScrollView>
-      ) : null}
-      <Text style={styles.note}>{extracted.note}</Text>
-      {fields.length === 0 ? <Text style={styles.note}>No structured fields were found on this page.</Text> : null}
-      {fields.map((field, index) => (
-        <FieldRow
-          key={`${shownIndex}-${field.key}`}
-          label={field.label}
-          onChangeLabel={(label) => {
-            setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, label } : item)));
-          }}
-          onChangeValue={(value) => {
-            setFields((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, value } : item)));
-          }}
-          onDelete={() => {
-            setFields((current) => current.filter((_, itemIndex) => itemIndex !== index));
-          }}
-          value={field.value}
-        />
-      ))}
-      {askPassword && !hasTwin ? (
-        <View style={styles.unlockBox}>
-          <Text style={styles.unlockLabel}>{showingLocked ? 'Password that opens this file' : 'Password for the locked file'}</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect={false}
-            editable={!unlocking}
-            onChangeText={setPassword}
-            onSubmitEditing={() => void applyLock()}
-            placeholder="Document password"
-            placeholderTextColor="rgba(16, 22, 20, 0.38)"
-            secureTextEntry
-            style={styles.unlockInput}
-            textContentType="none"
-            value={password}
-          />
-          {showingLocked ? null : (
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect={false}
-              editable={!unlocking}
-              onChangeText={setConfirmPassword}
-              onSubmitEditing={() => void applyLock()}
-              placeholder="Confirm password"
-              placeholderTextColor="rgba(16, 22, 20, 0.38)"
-              secureTextEntry
-              style={styles.unlockInput}
-              textContentType="none"
-              value={confirmPassword}
-            />
-          )}
-          <View style={styles.unlockRow}>
-            <PressableScale
-              accessibilityLabel="Cancel"
-              disabled={unlocking}
-              onPress={() => {
-                setAskPassword(false);
-                setPassword('');
-                setConfirmPassword('');
-              }}
-              style={styles.unlockCancel}
-            >
-              <Text style={styles.unlockCancelText}>Cancel</Text>
-            </PressableScale>
-            <PressableScale
-              accessibilityLabel={showingLocked ? 'Unlock file' : 'Lock file'}
-              disabled={unlocking}
-              onPress={() => void applyLock()}
-              style={styles.unlockSubmit}
-            >
-              <Text style={styles.unlockSubmitText}>{unlocking ? (showingLocked ? 'Unlocking…' : 'Locking…') : showingLocked ? 'Unlock file' : 'Lock file'}</Text>
-            </PressableScale>
-          </View>
-        </View>
-      ) : null}
-      <Modal animationType="fade" onRequestClose={() => setMenuOpen(false)} transparent visible={menuOpen}>
-        <View style={styles.menuLayer}>
-          <Pressable accessibilityLabel="Close actions" onPress={() => setMenuOpen(false)} style={styles.menuBackdrop} />
-          <View
-            style={[
-              styles.menu,
-              {
-                top: insets.top + 62,
-                right: Math.max(0, (width - Math.min(width, 560)) / 2) + 22,
-                maxHeight: Math.max(220, height - insets.top - insets.bottom - 88),
-              },
-            ]}
-          >
-            <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
-            icon="save"
-            label={doc.favourite ? 'Remove favourite' : 'Favourite'}
-            onPress={() => void vault.toggleFavourite(doc.id)}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={`Share file ${shownName}`}
+            accessibilityLabel={`Share ${shownName}`}
             disabled={!plain || integrity !== 'ok'}
-            icon="share"
-            label="Share"
             onPress={() => void shareFile()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
+            style={styles.dockButton}
+          >
+            <Text style={styles.dockLabel}>Share</Text>
+          </PressableScale>
+          <PressableScale
             accessibilityLabel={`Download ${shownName}`}
             disabled={!plain || integrity !== 'ok'}
-            icon="download"
-            label="Download"
             onPress={() => void download()}
-            tone="gold"
-          />
-          <Text style={styles.menuLabel}>Modify</Text>
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Rotate document"
-            icon="details"
-            label="Rotate"
-            onPress={() => void rotateDocument()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={imageFile ? 'Convert this image to a PDF' : 'Convert this PDF to an image'}
-            disabled={busyCopy !== null || !plain || integrity !== 'ok' || showingLocked || (!imageFile && !pdfFile)}
-            icon="details"
-            label={busyCopy === 'convert' ? 'Converting…' : imageFile ? 'Convert to PDF' : pdfFile ? 'Convert to image' : 'Convert'}
-            onPress={() => void convertFile()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Make a collage"
-            icon="add"
-            label="Make a collage"
-            onPress={() => setCollageOpen(true)}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Save a copy of this page"
-            disabled={busyCopy !== null || !plain || integrity !== 'ok'}
-            icon="add"
-            label={busyCopy === 'duplicate' ? 'Copying…' : 'Duplicate'}
-            onPress={() => void duplicateFile()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
-            icon="details"
-            label={extracted.noiseCleared ? 'Show original text' : 'Clear noise'}
-            onPress={() => void toggleNoise()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Reset document to the original"
-            icon="details"
-            label="Reset to original"
-            onPress={() => void resetDocument()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Add a page"
-            disabled={adding}
-            icon="add"
-            label={adding ? 'Adding…' : 'Add a page'}
-            onPress={() => void addPages()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Save extracted fields"
-            disabled={saving}
-            icon="save"
-            label={saving ? 'Saving…' : 'Save'}
-            onPress={() => void saveFields()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={`Extract text from ${shownName}`}
-            disabled={extracting || !plain || integrity !== 'ok'}
-            icon="extract"
-            label={extracting ? 'Extracting…' : 'Extract text'}
-            onPress={() => void extractText()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
-            disabled={unlocking || !plain || integrity !== 'ok'}
-            icon={showingLocked ? 'unlock' : 'lock'}
-            label={
-              unlocking
-                ? hasTwin
-                  ? 'Switching…'
-                  : showingLocked
-                    ? 'Unlocking…'
-                    : 'Locking…'
-                : showingLocked
-                  ? 'Unlock file'
-                  : 'Lock file'
-            }
-            onPress={() => {
-              setMessage(null);
-              if (hasTwin) {
-                void switchCopy();
-                return;
-              }
-              setAskPassword((open) => {
-                if (open) {
-                  setPassword('');
-                  setConfirmPassword('');
-                }
-                return !open;
-              });
-            }}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Change family member"
-            icon="details"
-            label="Change family member"
-            onPress={() => setMemberOpen(true)}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Change category"
-            icon="details"
-            label="Change category"
-            onPress={() => setKindOpen(true)}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)} accessibilityLabel="Add a field" icon="add" label="Add a field" onPress={addField} />
-          {fields.length > 0 ? (
-            <ActionButton dismiss={() => setMenuOpen(false)}
-              accessibilityLabel={`Share details from ${doc.title}`}
-              icon="details"
-              label="Share details"
-              onPress={() => void shareDetails()}
-            />
-          ) : null}
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
-            disabled={deletingPage || removing}
-            icon="remove"
-            label={deletingPage ? 'Deleting…' : 'Delete page'}
-            onPress={() => void deletePage()}
-            tone="danger"
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={`Delete document ${doc.title}`}
-            disabled={removing || deletingPage}
-            icon="remove"
-            label={removing ? 'Removing…' : 'Delete document'}
-            onPress={() => void remove()}
-            tone="danger"
-          />
+            style={styles.dockButton}
+          >
+            <Text style={styles.dockLabel}>Download</Text>
+          </PressableScale>
+          <PressableScale accessibilityLabel="Edit this document" onPress={() => setSheet('edit')} style={styles.dockEdit}>
+            <Text style={styles.dockEditLabel}>Edit</Text>
+          </PressableScale>
+        </View>
+      </View>
+      <Modal animationType="slide" onRequestClose={() => setSheet(null)} transparent visible={sheet !== null}>
+        <View style={styles.sheetLayer}>
+          <Pressable accessibilityLabel="Close edits" onPress={() => setSheet(null)} style={styles.sheetBackdrop} />
+          <View style={[styles.sheet, { maxHeight: Math.max(320, height - insets.top - 24), paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={styles.grabber} />
+            <View style={styles.sheetHead}>
+              {sheet !== 'edit' ? (
+                <PressableScale accessibilityLabel="Back to edits" onPress={() => setSheet('edit')} style={styles.sheetLink}>
+                  <Text style={styles.sheetLinkText}>Edits</Text>
+                </PressableScale>
+              ) : (
+                <View style={styles.sheetLink} />
+              )}
+              <Text style={styles.sheetTitle}>
+                {sheet === 'collage'
+                  ? 'Collage'
+                  : sheet === 'lock'
+                    ? showingLocked
+                      ? 'Unlock'
+                      : 'Lock'
+                    : sheet === 'member'
+                      ? 'Family'
+                      : sheet === 'category'
+                        ? 'Category'
+                        : sheet === 'rename'
+                          ? 'Rename'
+                          : 'Edit'}
+              </Text>
+              <PressableScale accessibilityLabel="Close" onPress={() => setSheet(null)} style={styles.sheetLink}>
+                <Text style={styles.sheetLinkText}>Close</Text>
+              </PressableScale>
+            </View>
+            {message ? <Text style={styles.sheetMessage}>{message}</Text> : null}
+            <ScrollView bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetBody}>
+              {sheet === 'edit' ? (
+                <View style={styles.tileGrid}>
+                  <Text style={styles.sectionLabel}>Page</Text>
+                  <Tile accessibilityLabel="Rotate document" detail="Quarter turn" label="Rotate" onPress={() => void rotateDocument()} />
+                  <Tile
+                    accessibilityLabel={imageFile ? 'Convert this image to a PDF' : 'Convert this PDF to an image'}
+                    detail={busyCopy === 'convert' ? 'Working…' : imageFile ? 'Save a PDF' : pdfFile ? 'First page' : 'Unavailable'}
+                    disabled={busyCopy !== null || !plain || integrity !== 'ok' || showingLocked || (!imageFile && !pdfFile)}
+                    label={imageFile ? 'To PDF' : 'To image'}
+                    onPress={() => void convertFile()}
+                    tone="mint"
+                  />
+                  <Tile accessibilityLabel="Make a collage" detail="JPEG or PNG" label="Collage" onPress={() => setSheet('collage')} tone="mint" />
+                  <Tile
+                    accessibilityLabel="Save a copy of this document"
+                    detail={busyCopy === 'duplicate' ? 'Working…' : 'New document'}
+                    disabled={busyCopy !== null || integrity !== 'ok'}
+                    label="Duplicate"
+                    onPress={() => void duplicateFile()}
+                  />
+                  <Tile
+                    accessibilityLabel="Add a page"
+                    detail={adding ? 'Adding…' : `${pages.length} of ${MAX_PAGES}`}
+                    disabled={adding}
+                    label="Add page"
+                    onPress={() => void addPages()}
+                  />
+                  <Text style={styles.sectionLabel}>Text</Text>
+                  <Tile
+                    accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
+                    detail="Wording"
+                    label={extracted.noiseCleared ? 'Original text' : 'Clear noise'}
+                    onPress={() => void toggleNoise()}
+                  />
+                  <Tile
+                    accessibilityLabel={`Extract text from ${shownName}`}
+                    detail={extracting ? 'Reading…' : 'On this device'}
+                    disabled={extracting || !plain || integrity !== 'ok'}
+                    label="Extract"
+                    onPress={() => void extractText()}
+                  />
+                  <Tile accessibilityLabel="Reset document to the original" detail="View and text" label="Reset" onPress={() => void resetDocument()} />
+                  <Tile
+                    accessibilityLabel="Save extracted fields"
+                    detail={saving ? 'Saving…' : 'This page'}
+                    disabled={saving}
+                    label="Save fields"
+                    onPress={() => void saveFields()}
+                  />
+                  <Tile accessibilityLabel="Add a field" detail="Blank row" label="Add field" onPress={addField} />
+                  {fields.length > 0 ? (
+                    <Tile accessibilityLabel={`Share details from ${doc.title}`} detail="Text only" label="Share details" onPress={() => void shareDetails()} />
+                  ) : null}
+                  <Text style={styles.sectionLabel}>File</Text>
+                  <Tile
+                    accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
+                    detail={doc.favourite ? 'Saved' : 'Mark it'}
+                    label={doc.favourite ? 'Unfavourite' : 'Favourite'}
+                    onPress={() => void vault.toggleFavourite(doc.id)}
+                    tone="mint"
+                  />
+                  <Tile
+                    accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
+                    detail={unlocking ? 'Working…' : hasTwin ? 'Switch copy' : 'Password'}
+                    disabled={unlocking || !plain || integrity !== 'ok'}
+                    label={showingLocked ? 'Unlock' : 'Lock'}
+                    onPress={() => {
+                      setMessage(null);
+                      if (hasTwin) {
+                        void switchCopy();
+                        return;
+                      }
+                      setPassword('');
+                      setConfirmPassword('');
+                      setSheet('lock');
+                    }}
+                  />
+                  <Tile accessibilityLabel="Change family member" detail={documentMember(doc)} label="Family" onPress={() => setSheet('member')} />
+                  <Tile accessibilityLabel="Change category" detail={kindLabel(doc.kind)} label="Category" onPress={() => setSheet('category')} />
+                  <Tile
+                    accessibilityLabel={`Rename ${shownName}`}
+                    detail={pageIndex === 0 ? shownName : 'First page'}
+                    disabled={pageIndex !== 0}
+                    label="Rename"
+                    onPress={() => {
+                      beginRename();
+                      setSheet('rename');
+                    }}
+                  />
+                  <Tile
+                    accessibilityLabel={`Delete page ${shownIndex + 1} of ${doc.title}`}
+                    detail={deletingPage ? 'Deleting…' : `Page ${shownIndex + 1}`}
+                    disabled={deletingPage || removing}
+                    label="Delete page"
+                    onPress={() => void deletePage()}
+                    tone="danger"
+                    wide
+                  />
+                  <Tile
+                    accessibilityLabel={`Delete document ${doc.title}`}
+                    detail={removing ? 'Removing…' : 'Whole document'}
+                    disabled={removing || deletingPage}
+                    label="Delete document"
+                    onPress={() => void remove()}
+                    tone="danger"
+                    wide
+                  />
+                </View>
+              ) : null}
+              {sheet === 'collage' ? (
+                <View>
+                  <Text style={styles.panelNote}>Side by side, top to bottom, or a grid. JPEG and PNG only. Saved as a new PDF.</Text>
+                  <View style={styles.collageLayouts}>
+                    <PressableScale
+                      accessibilityLabel="Side by side collage"
+                      onPress={() => setCollageLayout('row')}
+                      style={[styles.choice, collageLayout === 'row' ? styles.choiceOn : null]}
+                    >
+                      <Text style={[styles.choiceText, collageLayout === 'row' ? styles.choiceTextOn : null]}>Side by side</Text>
+                    </PressableScale>
+                    <PressableScale
+                      accessibilityLabel="Top to bottom collage"
+                      onPress={() => setCollageLayout('stack')}
+                      style={[styles.choice, collageLayout === 'stack' ? styles.choiceOn : null]}
+                    >
+                      <Text style={[styles.choiceText, collageLayout === 'stack' ? styles.choiceTextOn : null]}>Top to bottom</Text>
+                    </PressableScale>
+                    <PressableScale
+                      accessibilityLabel="Grid collage"
+                      onPress={() => setCollageLayout('grid')}
+                      style={[styles.choice, collageLayout === 'grid' ? styles.choiceOn : null]}
+                    >
+                      <Text style={[styles.choiceText, collageLayout === 'grid' ? styles.choiceTextOn : null]}>Grid</Text>
+                    </PressableScale>
+                  </View>
+                  <Text style={styles.collageCount}>{Math.min(collageCount, 4)} images ready</Text>
+                  <PressableScale accessibilityLabel="Add photos to the collage" onPress={() => void addCollagePhotos()} style={styles.panelButton}>
+                    <Text style={styles.panelButtonText}>Add photos</Text>
+                  </PressableScale>
+                  <PressableScale
+                    accessibilityLabel="Save collage"
+                    disabled={busyCopy !== null}
+                    onPress={() => void saveCollage()}
+                    style={styles.panelPrimary}
+                  >
+                    <Text style={styles.panelPrimaryText}>{busyCopy === 'collage' ? 'Saving…' : 'Save collage'}</Text>
+                  </PressableScale>
+                </View>
+              ) : null}
+              {sheet === 'lock' ? (
+                <View>
+                  <Text style={styles.panelNote}>{showingLocked ? 'Password that opens this file.' : 'Password for the locked copy. The open file stays.'}</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    editable={!unlocking}
+                    onChangeText={setPassword}
+                    onSubmitEditing={() => void applyLock()}
+                    placeholder="Document password"
+                    placeholderTextColor="rgba(244, 246, 250, 0.38)"
+                    secureTextEntry
+                    style={styles.sheetInput}
+                    textContentType="none"
+                    value={password}
+                  />
+                  {showingLocked ? null : (
+                    <TextInput
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      autoCorrect={false}
+                      editable={!unlocking}
+                      onChangeText={setConfirmPassword}
+                      onSubmitEditing={() => void applyLock()}
+                      placeholder="Confirm password"
+                      placeholderTextColor="rgba(244, 246, 250, 0.38)"
+                      secureTextEntry
+                      style={styles.sheetInput}
+                      textContentType="none"
+                      value={confirmPassword}
+                    />
+                  )}
+                  <PressableScale
+                    accessibilityLabel={showingLocked ? 'Unlock file' : 'Lock file'}
+                    disabled={unlocking}
+                    onPress={() => void applyLock()}
+                    style={styles.panelPrimary}
+                  >
+                    <Text style={styles.panelPrimaryText}>
+                      {unlocking ? (showingLocked ? 'Unlocking…' : 'Locking…') : showingLocked ? 'Unlock file' : 'Lock file'}
+                    </Text>
+                  </PressableScale>
+                </View>
+              ) : null}
+              {sheet === 'member' ? (
+                <MemberPicker
+                  members={vault.members}
+                  onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
+                  onSelect={(name) => {
+                    setMessage(null);
+                    void vault
+                      .assignMember(doc.id, name)
+                      .then(() => {
+                        setSheet('edit');
+                        setMessage(`Filed under ${name}.`);
+                      })
+                      .catch((error: unknown) => {
+                        setMessage(error instanceof Error ? error.message : 'Could not file this document.');
+                      });
+                  }}
+                  selected={doc.member ?? ''}
+                />
+              ) : null}
+              {sheet === 'category' ? (
+                <KindPicker
+                  categories={vault.categories}
+                  onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
+                  onSelect={(kind) => {
+                    setMessage(null);
+                    void vault
+                      .assignKind(doc.id, kind)
+                      .then(() => {
+                        setSheet('edit');
+                        setMessage(`Category set to ${kindLabel(kind)}.`);
+                      })
+                      .catch((error: unknown) => {
+                        setMessage(error instanceof Error ? error.message : 'Could not change the category.');
+                      });
+                  }}
+                  selected={doc.kind}
+                />
+              ) : null}
+              {sheet === 'rename' ? (
+                <View>
+                  <Text style={styles.panelNote}>This changes the file name stored with the document.</Text>
+                  <TextInput
+                    accessibilityLabel="File name"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                    onChangeText={setDraftName}
+                    onSubmitEditing={() => void commitRename()}
+                    style={styles.sheetInput}
+                    value={draftName}
+                  />
+                  <PressableScale
+                    accessibilityLabel="Save file name"
+                    onPress={() => {
+                      void commitRename();
+                      setSheet('edit');
+                    }}
+                    style={styles.panelPrimary}
+                  >
+                    <Text style={styles.panelPrimaryText}>Save name</Text>
+                  </PressableScale>
+                </View>
+              ) : null}
             </ScrollView>
           </View>
         </View>
       </Modal>
-    </Screen>
+    </View>
   );
 }
 
-function ActionButton({
+function Tile({
   label,
-  icon,
+  detail,
   onPress,
   disabled,
-  tone = 'paper',
+  tone = 'plain',
+  wide = false,
   accessibilityLabel,
-  dismiss,
 }: {
   label: string;
-  icon: ActionName;
+  detail?: string;
   onPress: () => void;
   disabled?: boolean;
-  tone?: 'paper' | 'gold' | 'danger';
+  tone?: 'plain' | 'mint' | 'danger';
+  wide?: boolean;
   accessibilityLabel: string;
-  dismiss: () => void;
 }) {
-  const color = tone === 'gold' ? theme.gold : tone === 'danger' ? theme.danger : theme.paper;
   return (
     <PressableScale
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
-      onPress={() => {
-        dismiss();
-        onPress();
-      }}
-      style={styles.action}
+      onPress={onPress}
+      style={[styles.tile, wide ? styles.tileWide : null, tone === 'danger' ? styles.tileDanger : null, disabled ? styles.tileOff : null]}
     >
-      <ActionIcon color={color} name={icon} />
-      <Text style={[styles.actionText, tone === 'gold' ? styles.goldText : null, tone === 'danger' ? styles.removeText : null]}>
-        {label}
-      </Text>
+      <Text style={[styles.tileLabel, tone === 'mint' ? styles.tileLabelMint : null, tone === 'danger' ? styles.tileLabelDanger : null]}>{label}</Text>
+      {detail ? (
+        <Text numberOfLines={1} style={styles.tileDetail}>
+          {detail}
+        </Text>
+      ) : null}
     </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
-  metaRow: { width: '100%', maxWidth: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 },
-  kickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
-  categoryRow: {
-    width: '100%',
-    marginTop: 14,
+  screen: { flex: 1, backgroundColor: theme.ink },
+  scroll: { flex: 1, width: '100%' },
+  column: { alignSelf: 'center', maxWidth: '100%', paddingHorizontal: 18 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  centerHit: { borderRadius: 999, backgroundColor: theme.paper, paddingHorizontal: 14, paddingVertical: 8 },
+  centerText: { color: theme.ink, fontFamily: font.semibold, fontSize: 14 },
+  favMark: { color: theme.gold, fontFamily: font.semibold, fontSize: 13, letterSpacing: 0.4 },
+  docTitle: { color: theme.paper, fontFamily: font.display, fontSize: 34, lineHeight: 38, marginTop: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.line,
-    backgroundColor: theme.inkRaised,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  categoryCopy: { flex: 1, minWidth: 0 },
-  categoryLabel: {
-    color: theme.paperFaint,
-    fontFamily: font.medium,
-    fontSize: 13,
-  },
-  categoryValue: { color: theme.paper, fontFamily: font.medium, fontSize: 16, marginTop: 2 },
-  categoryAction: {
-    color: theme.ink,
-    fontFamily: font.semibold,
-    fontSize: 14,
-    backgroundColor: theme.paper,
+    gap: 8,
+    minHeight: 44,
+    paddingLeft: 8,
+    paddingRight: 14,
     borderRadius: 999,
+    backgroundColor: theme.inkRaised,
+  },
+  chipText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  stage: {
+    marginTop: 18,
+    borderRadius: 28,
+    backgroundColor: theme.inkRaised,
+    paddingTop: 16,
+    paddingBottom: 14,
     overflow: 'hidden',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
-  fileNameHit: { maxWidth: '100%', flexShrink: 1, paddingVertical: 2 },
-  fileName: {
-    color: theme.paper,
-    fontFamily: font.body,
-    fontSize: 14,
-    textDecorationLine: 'underline',
-    maxWidth: '100%',
-  },
-  meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14 },
-  fileInput: {
-    minWidth: 180,
-    color: theme.paper,
-    fontFamily: font.body,
-    fontSize: 14,
-    paddingVertical: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.gold,
-  },
-  badge: {
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 12,
-    backgroundColor: 'rgba(143, 203, 176, 0.12)',
-  },
-  badgeBad: { backgroundColor: 'rgba(224, 139, 122, 0.14)' },
-  badgeText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  titleCopy: { flex: 1, minWidth: 0 },
-  titleActions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8 },
-  centerHit: { borderRadius: 999, backgroundColor: theme.paper, paddingHorizontal: 12, paddingVertical: 6 },
-  centerText: { color: theme.ink, fontFamily: font.semibold, fontSize: 13 },
-  heartHit: { paddingHorizontal: 4 },
-  heart: { fontSize: 28 },
-  previewFrame: { width: '100%', aspectRatio: 210 / 297 },
+  previewScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  previewCard: { backgroundColor: theme.sheet, overflow: 'hidden' },
   previewFill: { width: '100%', height: '100%', margin: 0, padding: 0, borderWidth: 0 },
-  previewScroll: { width: '100%', maxWidth: '100%', marginTop: 16 },
-  previewScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
-  previewCard: {
-    padding: 0,
-    borderRadius: 0,
-    borderWidth: 0,
-    backgroundColor: theme.sheet,
-    overflow: 'hidden',
-  },
-  preview: {
-    alignSelf: 'stretch',
-    width: '100%',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    margin: 0,
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: 0,
-    backgroundColor: theme.ink,
-  },
-  imagePending: { width: '100%', height: 260 },
   fileFace: {
     width: '100%',
-    alignSelf: 'stretch',
+    height: '100%',
     color: theme.ink,
     backgroundColor: theme.sheet,
     fontFamily: font.body,
-    fontSize: 15,
-    lineHeight: 22,
-    margin: 0,
-    padding: 0,
-  },
-  note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
-  pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
-  pageStep: { paddingVertical: 8, paddingHorizontal: 4 },
-  pageStepText: { color: theme.gold, fontFamily: font.semibold, fontSize: 14 },
-  pageStepOff: { color: theme.paperFaint },
-  pageCount: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  unlockBox: {
-    width: '100%',
-    maxWidth: '100%',
-    marginTop: 16,
+    fontSize: 16,
+    lineHeight: 24,
     padding: 16,
-    borderRadius: 20,
-    backgroundColor: theme.sheet,
   },
-  unlockLabel: {
-    color: theme.goldDeep,
+  caption: { paddingHorizontal: 18, paddingTop: 14 },
+  captionName: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  captionMeta: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13, marginTop: 4 },
+  pager: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
+  pagePill: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.inkSoft,
+  },
+  pagePillOn: { backgroundColor: theme.gold },
+  pagePillText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  pagePillTextOn: { color: theme.ink },
+  note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
+  detailsTitle: {
+    color: theme.gold,
     fontFamily: font.semibold,
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+    marginTop: 22,
+    marginBottom: 8,
   },
-  unlockInput: {
-    minHeight: 48,
-    marginTop: 10,
-    borderRadius: 14,
+  dock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: theme.ink,
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
+    paddingTop: 10,
+    alignItems: 'center',
+  },
+  dockInner: { flexDirection: 'row', gap: 8, paddingHorizontal: 18 },
+  dockButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: theme.inkRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dockLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  dockEdit: {
+    flex: 1.15,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: theme.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dockEditLabel: { color: theme.ink, fontFamily: font.semibold, fontSize: 16 },
+  sheetLayer: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: theme.inkRaised,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+  },
+  grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(125, 223, 195, 0.45)', marginBottom: 8 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  sheetTitle: { color: theme.paper, fontFamily: font.display, fontSize: 28 },
+  sheetLink: { minWidth: 64, minHeight: 44, justifyContent: 'center' },
+  sheetLinkText: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
+  sheetMessage: { color: theme.gold, fontFamily: font.medium, fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  sheetBody: { paddingBottom: 12 },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  sectionLabel: {
+    width: '100%',
+    color: theme.paperFaint,
+    fontFamily: font.semibold,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 8,
+  },
+  tile: {
+    width: '47%',
+    flexGrow: 1,
+    minHeight: 84,
+    borderRadius: 18,
+    backgroundColor: theme.inkSoft,
     paddingHorizontal: 14,
-    backgroundColor: 'rgba(28, 25, 21, 0.06)',
+    paddingVertical: 14,
+    justifyContent: 'space-between',
+  },
+  tileWide: { width: '100%', flexBasis: '100%', flexGrow: 0 },
+  tileDanger: { backgroundColor: 'rgba(240, 168, 160, 0.12)' },
+  tileOff: { opacity: 0.4 },
+  tileLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 17 },
+  tileLabelMint: { color: theme.gold },
+  tileLabelDanger: { color: theme.danger },
+  tileDetail: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13, marginTop: 6 },
+  panelNote: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
+  collageLayouts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+  choice: {
+    minHeight: 52,
+    minWidth: 140,
+    flexGrow: 1,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: theme.inkSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceOn: { backgroundColor: theme.gold },
+  choiceText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  choiceTextOn: { color: theme.ink },
+  collageCount: { color: theme.gold, fontFamily: font.semibold, fontSize: 15, marginTop: 16 },
+  panelButton: {
+    minHeight: 52,
+    marginTop: 12,
+    borderRadius: 16,
+    backgroundColor: theme.inkSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelButtonText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  panelPrimary: {
+    minHeight: 52,
+    marginTop: 12,
+    borderRadius: 16,
+    backgroundColor: theme.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelPrimaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 16 },
+  sheetInput: {
+    minHeight: 52,
+    marginTop: 12,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    backgroundColor: theme.inkSoft,
     color: theme.paper,
     fontFamily: font.body,
     fontSize: 16,
-    outlineWidth: 0,
   },
-  unlockRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  unlockCancel: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(16, 22, 20, 0.08)',
-  },
-  unlockSubmit: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.paper,
-  },
-  unlockCancelText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
-  unlockSubmitText: { color: theme.sheet, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
-  quick: { flexDirection: 'row', gap: 8, marginTop: 18 },
-  quickPrimary: { flex: 1.2, backgroundColor: theme.paper, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
-  quickPrimaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
-  quickSecondary: {
-    flex: 1,
-    backgroundColor: theme.inkRaised,
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  quickSecondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
-  topBar: {
-    width: '100%',
-    maxWidth: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backInBar: { marginBottom: 0 },
-  menuButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  burger: { width: 18, height: 2, borderRadius: 1, backgroundColor: theme.gold },
-  menuLayer: { flex: 1 },
-  menuBackdrop: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'rgba(16, 22, 20, 0.28)',
-  },
-  menu: {
-    position: 'absolute',
-    zIndex: 2,
-    width: 280,
-    maxWidth: '100%',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.line,
-    backgroundColor: theme.inkRaised,
-    paddingVertical: 6,
-  },
-  menuLabel: {
-    color: theme.paperFaint,
-    fontFamily: font.semibold,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 2,
-  },
-  collageBox: {
-    marginTop: 14,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: theme.inkRaised,
-  },
-  collageTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
-  collageNote: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, lineHeight: 20, marginTop: 6 },
-  collageLayouts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  collageChip: { borderRadius: 999, borderWidth: 1, borderColor: theme.line, paddingHorizontal: 12, paddingVertical: 8 },
-  collageChipOn: { backgroundColor: theme.paper, borderColor: theme.paper },
-  collageChipText: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
-  collageChipTextOn: { color: theme.ink },
-  collageCount: { color: theme.gold, fontFamily: font.medium, fontSize: 14, marginTop: 12 },
-  collageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  actionText: { flex: 1, color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
-  goldText: { color: theme.gold },
-  removeText: { color: theme.danger },
 });

@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib/dist/pdf-lib.esm.js';
 
-export type CollageLayout = 'row' | 'grid';
+export type CollageLayout = 'row' | 'stack' | 'grid';
 
 export function canEmbedImage(mime: string): boolean {
   const kind = mime.toLowerCase();
@@ -35,9 +35,9 @@ export async function collagePdf(
   const pdf = await PDFDocument.create();
   const images = [];
   for (const part of usable) images.push(await embed(pdf, part.bytes, part.mime));
-  const cols = layout === 'row' ? images.length : 2;
-  const rows = layout === 'row' ? 1 : Math.ceil(images.length / 2);
-  const cellW = 420;
+  const cols = layout === 'stack' ? 1 : layout === 'row' ? images.length : 2;
+  const rows = layout === 'stack' ? images.length : layout === 'row' ? 1 : Math.ceil(images.length / 2);
+  const cellW = layout === 'stack' ? 560 : 420;
   const cellH = layout === 'row' ? 560 : 420;
   const page = pdf.addPage([cols * cellW, rows * cellH]);
   images.forEach((image, index) => {
