@@ -8,9 +8,8 @@ import type { VaultDocument } from '@/lib/types';
 import { session } from '@/lib/vault';
 import { font, theme } from '@/theme';
 
-const PORTRAIT_WIDTH = 240;
 const A4 = 297 / 210;
-const FACE = Math.round(PORTRAIT_WIDTH * A4);
+const FACE = 280;
 
 function frameWidth(pageRatio: number): number {
   const ratio = pageRatio > 0.2 ? pageRatio : A4;
@@ -89,7 +88,12 @@ export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?
   return (
     <View style={[styles.face, { width, height: FACE }]}>
       {image && preview ? (
-        <Image accessibilityLabel={doc.title} resizeMode="contain" source={{ uri: preview }} style={[styles.fill, { width, height: FACE }]} />
+        <Image
+          accessibilityLabel={doc.title}
+          resizeMode="cover"
+          source={{ uri: preview }}
+          style={[styles.fill, styles.edge, { width, height: FACE }]}
+        />
       ) : null}
       {pdf && preview && plain ? (
         <View style={[styles.fill, { width, height: FACE }]}>
@@ -110,15 +114,18 @@ export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?
 const styles = StyleSheet.create({
   face: {
     overflow: 'hidden',
-    backgroundColor: theme.paper,
+    backgroundColor: theme.sheet,
   },
   fill: { position: 'absolute', top: 0, left: 0 },
+  edge: { margin: 0, padding: 0, borderWidth: 0 },
   excerpt: {
     width: '100%',
-    color: theme.ink,
+    height: '100%',
+    color: theme.paper,
     fontFamily: font.body,
     fontSize: 15,
     lineHeight: 22,
-    padding: 16,
+    margin: 0,
+    padding: 0,
   },
 });

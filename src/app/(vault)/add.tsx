@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 17 },
   choiceLabelPrimary: { color: theme.ink },
   choiceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 4 },
-  choiceDetailPrimary: { color: 'rgba(7, 7, 8, 0.55)' },
+  choiceDetailPrimary: { color: 'rgba(16, 18, 24, 0.62)' },
   choiceGo: { color: theme.paperFaint, fontSize: 28, lineHeight: 30 },
   choiceGoPrimary: { color: theme.ink },
   reading: { alignItems: 'center', marginTop: 36 },

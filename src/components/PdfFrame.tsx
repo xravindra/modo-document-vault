@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     opacity: 0.99,
   },
   failed: {
-    color: theme.ink,
+    color: theme.paper,
     fontFamily: font.body,
     fontSize: 15,
     lineHeight: 22,

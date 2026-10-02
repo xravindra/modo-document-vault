@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 
 import { DocumentStack } from '@/components/DocumentStack';
@@ -29,18 +29,6 @@ export default function HomeScreen() {
       .sort((left, right) => right.createdAt - left.createdAt);
   }, [person, query, vault.documents]);
   const favourites = documents.filter((doc) => doc.favourite);
-  const stacks = useMemo(() => {
-    const groups = new Map<string, typeof documents>();
-    for (const doc of documents) {
-      const name = documentMember(doc);
-      const list = groups.get(name) ?? [];
-      list.push(doc);
-      groups.set(name, list);
-    }
-    return [...groups.entries()]
-      .sort(([left], [right]) => compareMembers(left, right))
-      .map(([name, items]) => ({ name, documents: items }));
-  }, [documents]);
 
   return (
     <Screen>
@@ -65,16 +53,16 @@ export default function HomeScreen() {
         value={query}
       />
       {people.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          <PressableScale onPress={() => setPerson('all')} style={[styles.chip, person === 'all' ? styles.chipOn : null]}>
-            <Text style={[styles.chipText, person === 'all' ? styles.chipTextOn : null]}>Everyone</Text>
+        <View style={styles.filters}>
+          <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.nameHit}>
+            <Text style={[styles.nameText, person === 'all' ? styles.nameOn : null]}>Everyone</Text>
           </PressableScale>
           {people.map((name) => (
-            <PressableScale key={name} onPress={() => setPerson(name)} style={[styles.chip, person === name ? styles.chipOn : null]}>
-              <Text style={[styles.chipText, person === name ? styles.chipTextOn : null]}>{name}</Text>
+            <PressableScale key={name} accessibilityLabel={name} onPress={() => setPerson(name)} style={styles.nameHit}>
+              <Text style={[styles.nameText, person === name ? styles.nameOn : null]}>{name}</Text>
             </PressableScale>
           ))}
-        </ScrollView>
+        </View>
       ) : null}
       {documents.length === 0 ? (
         <View style={styles.empty}>
@@ -90,12 +78,8 @@ export default function HomeScreen() {
         </View>
       ) : (
         <View style={styles.list}>
-          {favourites.length > 0 ? (
-            <DocumentStack categories={vault.categories} documents={favourites} heart name="Favourites" />
-          ) : null}
-          {stacks.map((stack) => (
-            <DocumentStack key={stack.name} categories={vault.categories} documents={stack.documents} name={stack.name} />
-          ))}
+          {favourites.length > 0 && person === 'all' ? <DocumentStack documents={favourites} heart name="Favourites" /> : null}
+          <DocumentStack documents={documents} name={person === 'all' ? 'All' : person} />
         </View>
       )}
     </Screen>
@@ -105,37 +89,36 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   heading: { flex: 1, minWidth: 0 },
-  brand: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 2.4 },
+  brand: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 1.2 },
   lock: {
     marginTop: 8,
     minWidth: 64,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.line,
     backgroundColor: theme.inkRaised,
     alignItems: 'center',
   },
   lockText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  title: { color: theme.paper, fontFamily: font.display, fontSize: 44, lineHeight: 48, marginTop: 8 },
-  count: { color: theme.paperDim, fontFamily: font.body, fontSize: 16, marginTop: 8 },
+  title: { color: theme.paper, fontFamily: font.display, fontSize: 36, lineHeight: 40, marginTop: 6 },
+  count: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, marginTop: 6 },
   search: {
-    marginTop: 22,
-    borderRadius: 999,
-    backgroundColor: theme.inkRaised,
+    marginTop: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.line,
     color: theme.paper,
     fontFamily: font.body,
     fontSize: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 0,
+    paddingVertical: 12,
   },
-  filters: { flexDirection: 'row', gap: 8, marginTop: 16, paddingRight: 8 },
-  chip: { borderRadius: 999, backgroundColor: theme.inkRaised, paddingHorizontal: 16, paddingVertical: 10 },
-  chipOn: { backgroundColor: theme.paper },
-  chipText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  chipTextOn: { color: theme.ink },
-  list: { marginTop: 22, gap: 4 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+  nameHit: { paddingVertical: 6, paddingRight: 8 },
+  nameText: { color: theme.paperFaint, fontFamily: font.medium, fontSize: 16 },
+  nameOn: { color: theme.gold },
+  list: { marginTop: 26 },
   empty: { marginTop: 48 },
   emptyTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28 },
   emptyBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 16, lineHeight: 24, marginTop: 8 },

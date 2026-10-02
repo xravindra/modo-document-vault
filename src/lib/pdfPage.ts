@@ -106,7 +106,9 @@ function paint(){
         canvas.width=Math.max(1,Math.floor(viewport.width));
         canvas.height=Math.max(1,Math.floor(viewport.height));
         canvas.style.width='100%';
-        canvas.style.height='auto';
+        canvas.style.height='100%';
+        canvas.style.margin='0';
+        canvas.style.border='0';
         return page.render({canvasContext:canvas.getContext('2d'),viewport:viewport}).promise;
       })
       .then(function(){ document.title = 'shown'; })
@@ -120,7 +122,7 @@ function buildHtml(viewer: Viewer, base64: string): string {
   return (
     '<!DOCTYPE html><html><head><meta charset="utf-8"/>' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>' +
-    '<style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}canvas{display:block;width:100%;height:auto}</style>' +
+    '<style>html,body{margin:0;padding:0;height:100%;background:#fff;overflow:hidden}canvas{display:block;width:100%;height:100%;margin:0;padding:0;border:0}</style>' +
     '</head><body><canvas id="page"></canvas><script>' +
     viewer.worker +
     '</script><script>' +

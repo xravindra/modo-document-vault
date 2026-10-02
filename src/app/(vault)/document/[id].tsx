@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 import { ActionIcon, type ActionName } from '@/components/ActionIcon';
 import { FieldRow } from '@/components/FieldRow';
@@ -11,7 +11,7 @@ import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
 import { PdfFrame } from '@/components/PdfFrame';
 import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
-import { BackButton, Banner, Headline, PressableScale, Screen } from '@/components/ui';
+import { BackButton, Banner, Headline, PressableScale, Screen, goBack } from '@/components/ui';
 import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
 import { extractDocument } from '@/lib/extract';
 import { parseFields } from '@/lib/fields';
@@ -147,6 +147,13 @@ export default function DocumentScreen() {
   const pageMeta = doc ? documentPages(doc)[Math.min(pageIndex, Math.max(documentPages(doc).length - 1, 0))] : undefined;
   const hasTwin = Boolean(pageMeta?.twin);
   const showingLocked = pageMeta?.locked === true || (!hasTwin && passwordProtected);
+  const frameAspect = mime.startsWith('image/')
+    ? imageRatio && imageRatio > 0
+      ? imageRatio
+      : 210 / 297
+    : (mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf')) && plain
+      ? 1 / Math.max(pdfPageRatio(plain), 0.2)
+      : 210 / 297;
 
   function beginRename() {
     if (!doc || renaming || pageIndex !== 0) return;
@@ -438,7 +445,7 @@ export default function DocumentScreen() {
     try {
       await vault.removePage(doc.id, index);
       if (onlyPage) {
-        router.back();
+        goBack();
         return;
       }
       setPageIndex((current) => Math.min(current, currentPages.length - 2));
@@ -456,7 +463,7 @@ export default function DocumentScreen() {
     setMessage(null);
     try {
       await vault.removeDocument(doc.id);
-      router.back();
+      goBack();
     } catch (error) {
       setRemoving(false);
       setMessage(error instanceof Error ? error.message : 'Could not delete this document.');
@@ -503,13 +510,6 @@ export default function DocumentScreen() {
               <Text style={styles.centerText}>Center</Text>
             </PressableScale>
           ) : null}
-          <PressableScale
-            accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
-            onPress={() => void vault.toggleFavourite(doc.id)}
-            style={styles.heartHit}
-          >
-            <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
-          </PressableScale>
         </View>
       </View>
       <View style={styles.quick}>
@@ -531,6 +531,13 @@ export default function DocumentScreen() {
         </PressableScale>
         <PressableScale accessibilityLabel="More actions" onPress={() => setMenuOpen(true)} style={styles.quickSecondary}>
           <Text style={styles.quickSecondaryText}>More</Text>
+        </PressableScale>
+        <PressableScale
+          accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
+          onPress={() => void vault.toggleFavourite(doc.id)}
+          style={styles.quickSecondary}
+        >
+          <Text style={styles.quickSecondaryText}>{doc.favourite ? 'Favourited' : 'Favourite'}</Text>
         </PressableScale>
       </View>
       <PressableScale
@@ -654,10 +661,15 @@ export default function DocumentScreen() {
       </View>
       <Banner message={message} />
       {preview ? (
-        <View style={[styles.previewCard, styles.previewFrame]}>
+        <View style={[styles.previewCard, { aspectRatio: frameAspect }]}>
           <ZoomFrame onSwipe={pages.length > 1 ? changePage : undefined} onZoomed={setZoomed} resetKey={zoomKey} rotation={turn}>
             {mime.startsWith('image/') ? (
-              <Image accessibilityLabel="Document preview" resizeMode="contain" source={{ uri: preview }} style={styles.previewFill} />
+              <Image
+                accessibilityLabel="Document preview"
+                resizeMode="cover"
+                source={{ uri: preview }}
+                style={styles.previewFill}
+              />
             ) : null}
             {mime.includes('pdf') && plain ? <PdfFrame resetKey={zoomKey} uri={preview} ratio={pdfPageRatio(plain)} /> : null}
             {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
@@ -993,15 +1005,14 @@ const styles = StyleSheet.create({
   heartHit: { paddingHorizontal: 4 },
   heart: { fontSize: 28 },
   previewFrame: { width: '100%', aspectRatio: 210 / 297 },
-  previewFill: { width: '100%', height: '100%' },
+  previewFill: { width: '100%', height: '100%', margin: 0, padding: 0, borderWidth: 0 },
   previewCard: {
     width: '100%',
     maxWidth: '100%',
     marginTop: 16,
     padding: 0,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: theme.line,
+    borderRadius: 0,
+    borderWidth: 0,
     backgroundColor: theme.inkRaised,
     overflow: 'hidden',
   },
@@ -1020,12 +1031,13 @@ const styles = StyleSheet.create({
   fileFace: {
     width: '100%',
     alignSelf: 'stretch',
-    color: theme.ink,
-    backgroundColor: theme.paper,
+    color: theme.paper,
+    backgroundColor: theme.sheet,
     fontFamily: font.body,
     fontSize: 15,
     lineHeight: 22,
-    padding: 16,
+    margin: 0,
+    padding: 0,
   },
   note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
@@ -1039,7 +1051,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     padding: 16,
     borderRadius: 20,
-    backgroundColor: theme.paper,
+    backgroundColor: theme.sheet,
   },
   unlockLabel: {
     color: theme.goldDeep,
@@ -1053,8 +1065,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     paddingHorizontal: 14,
-    backgroundColor: 'rgba(16, 22, 20, 0.08)',
-    color: theme.ink,
+    backgroundColor: 'rgba(28, 25, 21, 0.06)',
+    color: theme.paper,
     fontFamily: font.body,
     fontSize: 16,
     outlineWidth: 0,
@@ -1074,10 +1086,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.ink,
+    backgroundColor: theme.paper,
   },
-  unlockCancelText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
-  unlockSubmitText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
+  unlockCancelText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  unlockSubmitText: { color: theme.sheet, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
   quick: { flexDirection: 'row', gap: 8, marginTop: 18 },
   quickPrimary: { flex: 1.2, backgroundColor: theme.paper, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
   quickPrimaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },

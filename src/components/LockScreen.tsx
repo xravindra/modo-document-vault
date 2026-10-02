@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     aspectRatio: 1,
     borderRadius: 230,
-    backgroundColor: 'rgba(244, 239, 230, 0.05)',
+    backgroundColor: 'rgba(125, 223, 195, 0.1)',
   },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {

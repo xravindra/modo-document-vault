@@ -29,7 +29,7 @@ function Card({
   const swipeRef = useRef<SwipeableMethods>(null);
   const acting = useRef(false);
   const [note, setNote] = useState<string | null>(null);
-  const [frameWidth, setFrameWidth] = useState(240);
+  const [frameWidth, setFrameWidth] = useState(198);
 
   async function run(mode: 'share' | 'download') {
     if (acting.current) return;
@@ -76,28 +76,32 @@ function Card({
         style={[styles.open, showFile ? styles.openFile : null]}
       >
         {showFile ? <DocumentPreview doc={doc} onWidth={setFrameWidth} /> : <MemberAvatar name={documentMember(doc)} size={44} />}
-        <View style={[styles.copy, showFile ? styles.copyFile : null]}>
-          <Text numberOfLines={carousel ? 2 : 1} style={styles.title}>
-            {doc.title}
-          </Text>
-          <Text numberOfLines={1} style={styles.meta}>
-            {note ?? `${documentMember(doc)} · ${kindLabel(doc.kind)}`}
-          </Text>
-          {note ? null : (
-            <Text numberOfLines={1} style={styles.when}>
-              {formatWhen(doc.createdAt)} · {formatBytes(doc.byteLength)}
+        {showFile ? null : (
+          <View style={styles.copy}>
+            <Text numberOfLines={carousel ? 2 : 1} style={styles.title}>
+              {doc.title}
             </Text>
-          )}
-        </View>
+            <Text numberOfLines={1} style={styles.meta}>
+              {note ?? `${documentMember(doc)} · ${kindLabel(doc.kind)}`}
+            </Text>
+            {note ? null : (
+              <Text numberOfLines={1} style={styles.when}>
+                {formatWhen(doc.createdAt)} · {formatBytes(doc.byteLength)}
+              </Text>
+            )}
+          </View>
+        )}
         {showFile ? null : <Text style={styles.chevron}>›</Text>}
       </PressableScale>
-      <PressableScale
-        accessibilityLabel={doc.favourite ? `Remove ${doc.title} from favourites` : `Mark ${doc.title} as a favourite`}
-        onPress={() => void vault.toggleFavourite(doc.id)}
-        style={[styles.heartHit, showFile ? styles.heartFloat : null]}
-      >
-        <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
-      </PressableScale>
+      {showFile ? null : (
+        <PressableScale
+          accessibilityLabel={doc.favourite ? `Remove ${doc.title} from favourites` : `Mark ${doc.title} as a favourite`}
+          onPress={() => void vault.toggleFavourite(doc.id)}
+          style={styles.heartHit}
+        >
+          <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
+        </PressableScale>
+      )}
     </View>
   );
 
@@ -151,25 +155,26 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  cardFile: { flexDirection: 'column', alignItems: 'stretch', paddingHorizontal: 0, paddingVertical: 0, gap: 0 },
+  cardFile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    gap: 0,
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
   cardCarousel: { marginBottom: 0, alignSelf: 'flex-start' },
   open: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
   openFile: { width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: 0 },
   copy: { flex: 1, minWidth: 0 },
-  copyFile: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 },
   title: { color: theme.paper, fontFamily: font.semibold, fontSize: 17, lineHeight: 22 },
   meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 3 },
   when: { color: theme.paperFaint, fontFamily: font.body, fontSize: 13, marginTop: 2 },
   chevron: { color: theme.paperFaint, fontSize: 26, lineHeight: 28, marginLeft: 4 },
   heartHit: { padding: 4 },
-  heartFloat: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 2,
-    borderRadius: 16,
-    backgroundColor: 'rgba(5, 5, 5, 0.45)',
-  },
   heart: { fontSize: 20 },
   swipeWrap: { width: '100%', maxWidth: '100%', alignSelf: 'stretch' },
   swipe: {

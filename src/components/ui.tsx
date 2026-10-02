@@ -137,11 +137,16 @@ export function PressableScale({
   );
 }
 
+export function goBack(fallback: Href = '/') {
+  if (router.canGoBack()) router.back();
+  else router.replace(fallback);
+}
+
 export function BackButton({ href, label = 'Back', style }: { href?: Href; label?: string; style?: StyleProp<ViewStyle> }) {
   return (
     <PressableScale
       accessibilityLabel={label}
-      onPress={() => (href ? router.replace(href) : router.back())}
+      onPress={() => (href ? router.replace(href) : goBack())}
       style={[styles.back, style]}
     >
       <Text style={styles.backText}>{label}</Text>
@@ -180,7 +185,7 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     aspectRatio: 1,
     borderRadius: 180,
-    backgroundColor: 'rgba(244, 239, 230, 0.045)',
+    backgroundColor: 'rgba(125, 223, 195, 0.08)',
   },
   scroll: { alignItems: 'center', maxWidth: '100%' },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },
