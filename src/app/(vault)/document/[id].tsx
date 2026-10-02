@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
 
 import { ActionIcon, type ActionName } from '@/components/ActionIcon';
@@ -12,8 +13,10 @@ import { MemberPicker } from '@/components/MemberPicker';
 import { PdfFrame } from '@/components/PdfFrame';
 import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
 import { BackButton, Banner, Headline, PressableScale, Screen, goBack } from '@/components/ui';
+import { canEmbedImage, collagePdf, imageToPdf, renamedExtension, type CollageLayout } from '@/lib/convert';
 import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
 import { extractDocument } from '@/lib/extract';
+import { frameSize } from '@/lib/face';
 import { parseFields } from '@/lib/fields';
 import { clearNoise } from '@/lib/noise';
 import { engineLabel, formatBytes, shareSummary } from '@/lib/format';
@@ -21,6 +24,7 @@ import { documentMember } from '@/lib/members';
 import { documentPages, MAX_PAGES, pageExtraction } from '@/lib/pages';
 import { lockDocumentFile, pdfIsPasswordProtected, removePdfPassword } from '@/lib/pdfPassword';
 import { pdfPageRatio } from '@/lib/pdfText';
+import { pdfToJpeg } from '@/lib/pdfRaster';
 import { readSource } from '@/lib/readSource';
 import { kindLabel, type ExtractedField, type Extraction } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
@@ -59,12 +63,18 @@ export default function DocumentScreen() {
   const [zoomed, setZoomed] = useState(false);
   const [memberOpen, setMemberOpen] = useState(false);
   const [kindOpen, setKindOpen] = useState(false);
+  const [busyCopy, setBusyCopy] = useState<'convert' | 'duplicate' | 'collage' | null>(null);
+  const [collageOpen, setCollageOpen] = useState(false);
+  const [collageLayout, setCollageLayout] = useState<CollageLayout>('row');
+  const [collageExtras, setCollageExtras] = useState<{ bytes: Uint8Array; mime: string }[]>([]);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const fieldSeq = useRef(0);
 
   useEffect(() => {
     setPageIndex(0);
+    setCollageOpen(false);
+    setCollageExtras([]);
   }, [id]);
 
   useEffect(() => {
@@ -154,6 +164,10 @@ export default function DocumentScreen() {
     : (mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf')) && plain
       ? 1 / Math.max(pdfPageRatio(plain), 0.2)
       : 210 / 297;
+  const face = frameSize(height, frameAspect > 0 ? 1 / frameAspect : 297 / 210);
+  const imageFile = mime.startsWith('image/');
+  const pdfFile = mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
+  const collageCount = (plain && canEmbedImage(mime) ? 1 : 0) + collageExtras.length;
 
   function beginRename() {
     if (!doc || renaming || pageIndex !== 0) return;
@@ -295,6 +309,158 @@ export default function DocumentScreen() {
     await vault.setRotation(doc.id, 0);
     setFields(extraction.fields.map((field) => ({ ...field })));
     setMessage('Reset this document to the original view and text.');
+  }
+
+  async function sealSibling(title: string, nextName: string, nextMime: string, bytes: Uint8Array) {
+    if (!doc) return;
+    await vault.addDocument({
+      title,
+      kind: doc.kind,
+      member: documentMember(doc),
+      fileName: nextName,
+      mimeType: nextMime,
+      bytes,
+      extraction: {
+        engine: 'metadata',
+        text: '',
+        fields: [],
+        note: 'Saved on this device from another document in the vault.',
+      },
+    });
+  }
+
+  async function convertFile() {
+    if (!doc || !plain || integrity !== 'ok' || busyCopy) return;
+    const image = mime.startsWith('image/');
+    const pdf = mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
+    if (!image && !pdf) {
+      setMessage('This file cannot be converted.');
+      return;
+    }
+    setBusyCopy('convert');
+    setMessage(null);
+    vault.holdAutoLock();
+    try {
+      if (image) {
+        const bytes = await imageToPdf(plain, mime);
+        await sealSibling(`${doc.title} PDF`, renamedExtension(fileName || doc.fileName, 'pdf'), 'application/pdf', bytes);
+        setMessage('Saved a PDF copy in the vault.');
+      } else {
+        const bytes = await pdfToJpeg(plain);
+        await sealSibling(`${doc.title} image`, renamedExtension(fileName || doc.fileName, 'jpg'), 'image/jpeg', bytes);
+        setMessage('Saved an image of the first page in the vault.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not convert this file.');
+    } finally {
+      setBusyCopy(null);
+      vault.releaseAutoLock();
+    }
+  }
+
+  async function duplicateFile() {
+    if (!doc || integrity !== 'ok' || busyCopy) return;
+    setBusyCopy('duplicate');
+    setMessage(null);
+    vault.holdAutoLock();
+    try {
+      const copies = documentPages(doc);
+      const inputs: PageInput[] = [];
+      for (let index = 0; index < copies.length; index += 1) {
+        const opened = await session.openDocument(doc.id, index, false);
+        if (!opened.bytes || opened.integrity !== 'ok') throw new Error('Could not copy this document.');
+        inputs.push({
+          bytes: opened.bytes,
+          fileName: opened.fileName,
+          mimeType: opened.mimeType,
+          ...(copies[index]?.extraction ? { extraction: copies[index].extraction } : {}),
+        });
+      }
+      const first = inputs[0];
+      if (!first) throw new Error('Could not copy this document.');
+      await vault.addDocument({
+        title: `Copy of ${doc.title}`,
+        kind: doc.kind,
+        member: documentMember(doc),
+        fileName: first.fileName,
+        mimeType: first.mimeType,
+        bytes: first.bytes,
+        extraction: first.extraction ?? {
+          engine: 'metadata',
+          text: '',
+          fields: [],
+          note: 'Saved on this device from another document in the vault.',
+        },
+        extraPages: inputs.slice(1),
+      });
+      setMessage('Saved a copy in the vault.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not copy this document.');
+    } finally {
+      setBusyCopy(null);
+      vault.releaseAutoLock();
+    }
+  }
+
+  async function addCollagePhotos() {
+    setMessage(null);
+    vault.holdAutoLock();
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setMessage('Photo permission is required to choose images.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+        exif: false,
+        base64: false,
+        allowsMultipleSelection: true,
+        selectionLimit: 4,
+      });
+      if (result.canceled || result.assets.length === 0) return;
+      const next: { bytes: Uint8Array; mime: string }[] = [];
+      for (const asset of result.assets) {
+        const bytes = await readSource({ uri: asset.uri, base64: asset.base64, size: asset.fileSize });
+        const kind = asset.mimeType ?? 'image/jpeg';
+        if (!canEmbedImage(kind)) continue;
+        next.push({ bytes, mime: kind });
+      }
+      if (next.length === 0) {
+        setMessage('Choose JPEG or PNG photos.');
+        return;
+      }
+      setCollageExtras((current) => [...current, ...next].slice(0, 4));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not read those photos.');
+    } finally {
+      vault.releaseAutoLock();
+    }
+  }
+
+  async function saveCollage() {
+    if (!doc || busyCopy) return;
+    const tiles = [...(plain && canEmbedImage(mime) ? [{ bytes: plain, mime }] : []), ...collageExtras].slice(0, 4);
+    if (tiles.length < 2) {
+      setMessage('Add at least two JPEG or PNG images.');
+      return;
+    }
+    setBusyCopy('collage');
+    setMessage(null);
+    vault.holdAutoLock();
+    try {
+      const bytes = await collagePdf(tiles, collageLayout);
+      await sealSibling(`${doc.title} collage`, renamedExtension(fileName || doc.fileName, 'pdf'), 'application/pdf', bytes);
+      setCollageOpen(false);
+      setCollageExtras([]);
+      setMessage('Saved the collage in the vault.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not make the collage.');
+    } finally {
+      setBusyCopy(null);
+      vault.releaseAutoLock();
+    }
   }
 
   async function shareDetails() {
@@ -532,14 +698,53 @@ export default function DocumentScreen() {
         <PressableScale accessibilityLabel="More actions" onPress={() => setMenuOpen(true)} style={styles.quickSecondary}>
           <Text style={styles.quickSecondaryText}>More</Text>
         </PressableScale>
-        <PressableScale
-          accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
-          onPress={() => void vault.toggleFavourite(doc.id)}
-          style={styles.quickSecondary}
-        >
-          <Text style={styles.quickSecondaryText}>{doc.favourite ? 'Favourited' : 'Favourite'}</Text>
-        </PressableScale>
       </View>
+      {collageOpen ? (
+        <View style={styles.collageBox}>
+          <Text style={styles.collageTitle}>Collage</Text>
+          <Text style={styles.collageNote}>Side by side or a grid. JPEG and PNG only. The collage is saved as a new PDF.</Text>
+          <View style={styles.collageLayouts}>
+            <PressableScale
+              accessibilityLabel="Side by side collage"
+              onPress={() => setCollageLayout('row')}
+              style={[styles.collageChip, collageLayout === 'row' ? styles.collageChipOn : null]}
+            >
+              <Text style={[styles.collageChipText, collageLayout === 'row' ? styles.collageChipTextOn : null]}>Side by side</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Grid collage"
+              onPress={() => setCollageLayout('grid')}
+              style={[styles.collageChip, collageLayout === 'grid' ? styles.collageChipOn : null]}
+            >
+              <Text style={[styles.collageChipText, collageLayout === 'grid' ? styles.collageChipTextOn : null]}>Grid</Text>
+            </PressableScale>
+          </View>
+          <Text style={styles.collageCount}>{Math.min(collageCount, 4)} images ready</Text>
+          <View style={styles.collageActions}>
+            <PressableScale accessibilityLabel="Add photos to the collage" onPress={() => void addCollagePhotos()} style={styles.quickSecondary}>
+              <Text style={styles.quickSecondaryText}>Add photos</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Save collage"
+              disabled={busyCopy !== null}
+              onPress={() => void saveCollage()}
+              style={styles.quickPrimary}
+            >
+              <Text style={styles.quickPrimaryText}>{busyCopy === 'collage' ? 'Saving…' : 'Save collage'}</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Close collage"
+              onPress={() => {
+                setCollageOpen(false);
+                setCollageExtras([]);
+              }}
+              style={styles.quickSecondary}
+            >
+              <Text style={styles.quickSecondaryText}>Close</Text>
+            </PressableScale>
+          </View>
+        </View>
+      ) : null}
       <PressableScale
         accessibilityLabel={`Change family member, currently ${documentMember(doc)}`}
         onPress={() => setMemberOpen((open) => !open)}
@@ -661,12 +866,13 @@ export default function DocumentScreen() {
       </View>
       <Banner message={message} />
       {preview ? (
-        <View style={[styles.previewCard, { aspectRatio: frameAspect }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.previewScroll, { height: face.height }]} contentContainerStyle={styles.previewScrollContent}>
+        <View style={[styles.previewCard, { width: face.width, height: face.height }]}>
           <ZoomFrame onSwipe={pages.length > 1 ? changePage : undefined} onZoomed={setZoomed} resetKey={zoomKey} rotation={turn}>
             {mime.startsWith('image/') ? (
               <Image
                 accessibilityLabel="Document preview"
-                resizeMode="cover"
+                resizeMode="contain"
                 source={{ uri: preview }}
                 style={styles.previewFill}
               />
@@ -677,6 +883,7 @@ export default function DocumentScreen() {
             ) : null}
           </ZoomFrame>
         </View>
+        </ScrollView>
       ) : null}
       <Text style={styles.note}>{extracted.note}</Text>
       {fields.length === 0 ? <Text style={styles.note}>No structured fields were found on this page.</Text> : null}
@@ -767,12 +974,79 @@ export default function DocumentScreen() {
             ]}
           >
             <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
+            icon="save"
+            label={doc.favourite ? 'Remove favourite' : 'Favourite'}
+            onPress={() => void vault.toggleFavourite(doc.id)}
+          />
           <ActionButton dismiss={() => setMenuOpen(false)}
             accessibilityLabel={`Share file ${shownName}`}
             disabled={!plain || integrity !== 'ok'}
             icon="share"
             label="Share"
             onPress={() => void shareFile()}
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={`Download ${shownName}`}
+            disabled={!plain || integrity !== 'ok'}
+            icon="download"
+            label="Download"
+            onPress={() => void download()}
+            tone="gold"
+          />
+          <Text style={styles.menuLabel}>Modify</Text>
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Rotate document"
+            icon="details"
+            label="Rotate"
+            onPress={() => void rotateDocument()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={imageFile ? 'Convert this image to a PDF' : 'Convert this PDF to an image'}
+            disabled={busyCopy !== null || !plain || integrity !== 'ok' || showingLocked || (!imageFile && !pdfFile)}
+            icon="details"
+            label={busyCopy === 'convert' ? 'Converting…' : imageFile ? 'Convert to PDF' : pdfFile ? 'Convert to image' : 'Convert'}
+            onPress={() => void convertFile()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Make a collage"
+            icon="add"
+            label="Make a collage"
+            onPress={() => setCollageOpen(true)}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Save a copy of this page"
+            disabled={busyCopy !== null || !plain || integrity !== 'ok'}
+            icon="add"
+            label={busyCopy === 'duplicate' ? 'Copying…' : 'Duplicate'}
+            onPress={() => void duplicateFile()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
+            icon="details"
+            label={extracted.noiseCleared ? 'Show original text' : 'Clear noise'}
+            onPress={() => void toggleNoise()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Reset document to the original"
+            icon="details"
+            label="Reset to original"
+            onPress={() => void resetDocument()}
+          />
+          <ActionButton dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Add a page"
+            disabled={adding}
+            icon="add"
+            label={adding ? 'Adding…' : 'Add a page'}
+            onPress={() => void addPages()}
           />
           <ActionButton dismiss={() => setMenuOpen(false)}
             accessibilityLabel="Save extracted fields"
@@ -787,35 +1061,6 @@ export default function DocumentScreen() {
             icon="extract"
             label={extracting ? 'Extracting…' : 'Extract text'}
             onPress={() => void extractText()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
-            icon="details"
-            label={extracted.noiseCleared ? 'Show original text' : 'Clear noise'}
-            onPress={() => void toggleNoise()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Rotate document"
-            icon="details"
-            label="Rotate"
-            onPress={() => void rotateDocument()}
-          />
-          <ActionButton
-            dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Reset document to the original"
-            icon="details"
-            label="Reset to original"
-            onPress={() => void resetDocument()}
-          />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel={`Download ${shownName}`}
-            disabled={!plain || integrity !== 'ok'}
-            icon="download"
-            label="Download"
-            onPress={() => void download()}
-            tone="gold"
           />
           <ActionButton dismiss={() => setMenuOpen(false)}
             accessibilityLabel={showingLocked ? `Unlock file ${shownName}` : `Lock file ${shownName}`}
@@ -862,13 +1107,6 @@ export default function DocumentScreen() {
             onPress={() => setKindOpen(true)}
           />
           <ActionButton dismiss={() => setMenuOpen(false)} accessibilityLabel="Add a field" icon="add" label="Add a field" onPress={addField} />
-          <ActionButton dismiss={() => setMenuOpen(false)}
-            accessibilityLabel="Add a page"
-            disabled={adding}
-            icon="add"
-            label={adding ? 'Adding…' : 'Add a page'}
-            onPress={() => void addPages()}
-          />
           {fields.length > 0 ? (
             <ActionButton dismiss={() => setMenuOpen(false)}
               accessibilityLabel={`Share details from ${doc.title}`}
@@ -1006,14 +1244,13 @@ const styles = StyleSheet.create({
   heart: { fontSize: 28 },
   previewFrame: { width: '100%', aspectRatio: 210 / 297 },
   previewFill: { width: '100%', height: '100%', margin: 0, padding: 0, borderWidth: 0 },
+  previewScroll: { width: '100%', maxWidth: '100%', marginTop: 16 },
+  previewScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
   previewCard: {
-    width: '100%',
-    maxWidth: '100%',
-    marginTop: 16,
     padding: 0,
     borderRadius: 0,
     borderWidth: 0,
-    backgroundColor: theme.inkRaised,
+    backgroundColor: theme.sheet,
     overflow: 'hidden',
   },
   preview: {
@@ -1031,7 +1268,7 @@ const styles = StyleSheet.create({
   fileFace: {
     width: '100%',
     alignSelf: 'stretch',
-    color: theme.paper,
+    color: theme.ink,
     backgroundColor: theme.sheet,
     fontFamily: font.body,
     fontSize: 15,
@@ -1129,7 +1366,7 @@ const styles = StyleSheet.create({
   menu: {
     position: 'absolute',
     zIndex: 2,
-    width: 248,
+    width: 280,
     maxWidth: '100%',
     borderRadius: 18,
     borderWidth: 1,
@@ -1137,6 +1374,31 @@ const styles = StyleSheet.create({
     backgroundColor: theme.inkRaised,
     paddingVertical: 6,
   },
+  menuLabel: {
+    color: theme.paperFaint,
+    fontFamily: font.semibold,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  collageBox: {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: theme.inkRaised,
+  },
+  collageTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
+  collageNote: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  collageLayouts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  collageChip: { borderRadius: 999, borderWidth: 1, borderColor: theme.line, paddingHorizontal: 12, paddingVertical: 8 },
+  collageChipOn: { backgroundColor: theme.paper, borderColor: theme.paper },
+  collageChipText: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
+  collageChipTextOn: { color: theme.ink },
+  collageCount: { color: theme.gold, fontFamily: font.medium, fontSize: 14, marginTop: 12 },
+  collageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   action: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -18,8 +18,17 @@ const nodeOnly = new Set([
   'node:crypto',
 ]);
 
+const tslibEs = require.resolve('tslib/tslib.es6.js');
+const pdfLibEsm = require.resolve('pdf-lib/dist/pdf-lib.esm.js');
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (nodeOnly.has(moduleName)) return { type: 'empty' };
+  // The package entry loads tslib's import build, which reads tslib.default.__extends.
+  // The ESM bundle already contains those helpers.
+  if (moduleName === 'pdf-lib' || moduleName === 'pdf-lib/dist/pdf-lib.esm.js') {
+    return { type: 'sourceFile', filePath: pdfLibEsm };
+  }
+  if (moduleName === 'tslib') return { type: 'sourceFile', filePath: tslibEs };
   return context.resolveRequest(context, moduleName, platform);
 };
 

@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { OcrHost } from '@/components/OcrHost';
+import { RasterHost } from '@/components/RasterHost';
 import { VaultProvider } from '@/state/VaultContext';
 import { theme } from '@/theme';
 
@@ -35,6 +36,7 @@ export default function RootLayout() {
         <VaultProvider>
           <StatusBar style="light" />
           <OcrHost />
+          <RasterHost />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.ink } }} />
         </VaultProvider>
       </SafeAreaProvider>

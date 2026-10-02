@@ -1,22 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { PdfFrame } from '@/components/PdfFrame';
 import { previewUri } from '@/lib/deliver';
+import { frameSize } from '@/lib/face';
 import { pdfPageRatio } from '@/lib/pdfText';
 import type { VaultDocument } from '@/lib/types';
 import { session } from '@/lib/vault';
 import { font, theme } from '@/theme';
 
 const A4 = 297 / 210;
-const FACE = 280;
-
-function frameWidth(pageRatio: number): number {
-  const ratio = pageRatio > 0.2 ? pageRatio : A4;
-  return Math.max(72, Math.round(FACE / ratio));
-}
 
 export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?: (width: number) => void }) {
+  const { height: screenHeight } = useWindowDimensions();
   const revoke = useRef<(() => void) | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [mime, setMime] = useState('');
@@ -78,7 +74,8 @@ export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?
 
   const pdf = mime.includes('pdf') || doc.fileName.toLowerCase().endsWith('.pdf');
   const ratio = pdf && plain ? pdfPageRatio(plain) : imageRatio ?? A4;
-  const width = frameWidth(ratio);
+  const face = frameSize(screenHeight, ratio);
+  const width = face.width;
   const showPage = (image && preview) || (pdf && preview && plain);
 
   useEffect(() => {
@@ -86,22 +83,22 @@ export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?
   }, [onWidth, width]);
 
   return (
-    <View style={[styles.face, { width, height: FACE }]}>
+    <View style={[styles.face, { width, height: face.height }]}>
       {image && preview ? (
         <Image
           accessibilityLabel={doc.title}
-          resizeMode="cover"
+          resizeMode="contain"
           source={{ uri: preview }}
-          style={[styles.fill, styles.edge, { width, height: FACE }]}
+          style={[styles.fill, styles.edge, { width, height: face.height }]}
         />
       ) : null}
       {pdf && preview && plain ? (
-        <View style={[styles.fill, { width, height: FACE }]}>
+        <View style={[styles.fill, { width, height: face.height }]}>
           <PdfFrame ratio={ratio} uri={preview} />
         </View>
       ) : null}
       {!showPage ? (
-        <View style={[styles.fill, { width, height: FACE }]}>
+        <View style={[styles.fill, { width, height: face.height }]}>
           <Text numberOfLines={8} style={styles.excerpt}>
             {failed || preview ? doc.extraction.text || doc.title : 'Opening…'}
           </Text>
@@ -121,7 +118,7 @@ const styles = StyleSheet.create({
   excerpt: {
     width: '100%',
     height: '100%',
-    color: theme.paper,
+    color: theme.ink,
     fontFamily: font.body,
     fontSize: 15,
     lineHeight: 22,
