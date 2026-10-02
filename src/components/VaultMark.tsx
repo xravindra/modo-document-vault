@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     borderWidth: 1,
-    borderColor: 'rgba(224, 192, 138, 0.35)',
+    borderColor: 'rgba(230, 196, 138, 0.35)',
   },
   notch: {
     position: 'absolute',
@@ -82,9 +82,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.inkRaised,
-    borderWidth: 1,
-    borderColor: theme.line,
+    backgroundColor: theme.paper,
   },
-  monogram: { color: theme.paper, fontFamily: font.display, fontSize: 28, marginTop: -2 },
+  monogram: { color: theme.ink, fontFamily: font.display, fontSize: 28, marginTop: -2 },
 });

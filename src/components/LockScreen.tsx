@@ -174,8 +174,8 @@ export function LockScreen() {
   const subtitle = pending
     ? 'This writes the backup into private storage on this device. The PIN from the phone that made it still opens the vault.'
     : !vault.hasVault
-      ? 'Four digits wrap the vault key. Files stay on this device. MODO does not store the PIN. Keep an exported backup somewhere else in case this phone is replaced.'
-      : 'Enter the PIN for the vault stored on this device. A restored backup uses the PIN from the phone that created it.';
+      ? 'Four digits. They stay on this phone, and so do your files.'
+      : 'Enter your PIN.';
 
   return (
     <View style={[styles.root, width > 0 ? { width, maxWidth: width } : null, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
@@ -237,7 +237,7 @@ export function LockScreen() {
           </>
         )}
         {pending ? <Banner message={message || vault.error} /> : null}
-        <Text style={styles.footer}>AES-256-GCM · on this device · offline</Text>
+        <Text style={styles.footer}>Private to this phone</Text>
       </View>
     </View>
   );
@@ -260,11 +260,11 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     aspectRatio: 1,
     borderRadius: 230,
-    backgroundColor: 'rgba(224, 192, 138, 0.07)',
+    backgroundColor: 'rgba(244, 239, 230, 0.05)',
   },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {
-    color: theme.gold,
+    color: theme.paperFaint,
     fontFamily: font.semibold,
     letterSpacing: 3,
     fontSize: 12,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   title: {
     color: theme.paper,
     fontFamily: font.display,
-    fontSize: 36,
+    fontSize: 40,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -288,13 +288,13 @@ const styles = StyleSheet.create({
   },
   bio: { marginTop: 14, alignItems: 'center', padding: 12 },
   bioEmoji: { fontSize: 18 },
-  bioText: { color: theme.gold, fontFamily: font.medium, fontSize: 15 },
+  bioText: { color: theme.paper, fontFamily: font.medium, fontSize: 15 },
   restore: { marginTop: 18, alignItems: 'center' },
   restoreTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28, textAlign: 'center' },
   restoreMeta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 6, textAlign: 'center' },
   restoreButton: {
     marginTop: 16,
-    backgroundColor: theme.gold,
+    backgroundColor: theme.paper,
     borderRadius: 18,
     paddingVertical: 14,
     paddingHorizontal: 18,

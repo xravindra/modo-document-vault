@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
+import { BackButton, Banner, Headline, PressableScale, Quiet, Screen } from '@/components/ui';
 import { PinPad } from '@/components/PinPad';
 import { backupSummary } from '@/lib/backup';
 import { deliverFile } from '@/lib/deliver';
@@ -27,6 +27,7 @@ export default function SettingsScreen() {
   const [nextPin, setNextPin] = useState('');
   const [pending, setPending] = useState<Uint8Array | null>(null);
   const [summary, setSummary] = useState<{ sealedFiles: number; exportedAt: number } | null>(null);
+  const [confirmDestroy, setConfirmDestroy] = useState(false);
 
   async function exportBackup() {
     setBusy(true);
@@ -69,18 +70,10 @@ export default function SettingsScreen() {
   }
 
   function destroy() {
-    Alert.alert('Destroy this vault?', 'Encrypted files, the catalog, and the PIN wrap will be deleted from this device.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Destroy',
-        style: 'destructive',
-        onPress: () => {
-          void vault.destroy().catch((error: unknown) => {
-            setMessage(error instanceof Error ? error.message : 'Could not destroy the vault.');
-          });
-        },
-      },
-    ]);
+    setConfirmDestroy(false);
+    void vault.destroy().catch((error: unknown) => {
+      setMessage(error instanceof Error ? error.message : 'Could not destroy the vault.');
+    });
   }
 
   async function submitPin(value: string) {
@@ -126,14 +119,12 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <BackButton label="Security" />
-      <Kicker>Settings</Kicker>
-      <Headline>Hold the vault</Headline>
-      <Quiet>
-        Sealed files stay in private storage on this device. Export a backup and keep it somewhere else. That file is what you restore if you switch phones or this one dies.
-      </Quiet>
+      <BackButton href="/" label="Documents" />
+      <Headline>Settings</Headline>
+      <Quiet>Lock, fingerprint, PIN, and a backup you can keep somewhere else.</Quiet>
       <Banner message={message} />
 
+      <View style={styles.panel}>
       <Text style={styles.label}>Auto-lock</Text>
       <View style={styles.row}>
         {LOCKS.map((option) => {
@@ -149,7 +140,10 @@ export default function SettingsScreen() {
           );
         })}
       </View>
+      </View>
 
+      <View style={styles.panel}>
+      <Text style={styles.label}>Unlock</Text>
       {vault.canUseBiometrics || vault.bioMode !== 'off' ? (
         <PressableScale
           disabled={busy}
@@ -213,7 +207,9 @@ export default function SettingsScreen() {
           </PressableScale>
         </View>
       )}
+      </View>
 
+      <View style={styles.panel}>
       <Text style={styles.label}>This device</Text>
       <PressableScale disabled={busy} onPress={() => void exportBackup()} style={styles.primary}>
         <Text style={styles.primaryText}>{busy ? 'Working…' : 'Export encrypted backup'}</Text>
@@ -243,35 +239,60 @@ export default function SettingsScreen() {
           <Text style={styles.lineText}>Restore a backup</Text>
         </PressableScale>
       )}
-      <PressableScale onPress={destroy} style={styles.danger}>
-        <Text style={styles.dangerText}>Destroy vault on this device</Text>
-      </PressableScale>
+      {confirmDestroy ? (
+        <View style={styles.confirm}>
+          <Text style={styles.confirmText}>
+            Encrypted files, the catalog, and the PIN wrap will be deleted from this device.
+          </Text>
+          <PressableScale onPress={destroy} style={styles.dangerButton}>
+            <Text style={styles.dangerButtonText}>Destroy vault</Text>
+          </PressableScale>
+          <PressableScale onPress={() => setConfirmDestroy(false)} style={styles.lineButton}>
+            <Text style={styles.lineText}>Cancel</Text>
+          </PressableScale>
+        </View>
+      ) : (
+        <PressableScale onPress={() => setConfirmDestroy(true)} style={styles.danger}>
+          <Text style={styles.dangerText}>Destroy vault on this device</Text>
+        </PressableScale>
+      )}
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  label: {
+  panel: {
     marginTop: 22,
-    marginBottom: 10,
-    color: theme.paperDim,
+    borderRadius: 28,
+    backgroundColor: theme.inkRaised,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 16,
+  },
+  label: {
+    marginTop: 14,
+    marginBottom: 12,
+    color: theme.paperFaint,
     fontFamily: font.semibold,
     fontSize: 12,
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: 999, borderWidth: 1, borderColor: theme.line, paddingHorizontal: 12, paddingVertical: 8 },
-  chipOn: { backgroundColor: theme.gold, borderColor: theme.gold },
+  chip: { borderRadius: 999, backgroundColor: theme.inkSoft, paddingHorizontal: 14, paddingVertical: 10 },
+  chipOn: { backgroundColor: theme.paper },
   chipText: { color: theme.paper, fontFamily: font.medium, fontSize: 13 },
   chipTextOn: { color: theme.ink },
-  note: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, lineHeight: 21, marginTop: 16 },
-  lineButton: { marginTop: 14, paddingVertical: 12 },
-  lineText: { color: theme.gold, fontFamily: font.semibold, fontSize: 16 },
-  primary: { marginTop: 22, backgroundColor: theme.gold, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
+  note: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, lineHeight: 21, marginTop: 16, paddingHorizontal: 4 },
+  lineButton: { marginTop: 8, paddingVertical: 12 },
+  lineText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  primary: { marginTop: 4, backgroundColor: theme.paper, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   primaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   confirm: { marginTop: 8 },
   confirmText: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22 },
-  danger: { marginTop: 8, paddingVertical: 14 },
+  danger: { marginTop: 8, paddingVertical: 12 },
   dangerText: { color: theme.danger, fontFamily: font.semibold, fontSize: 15 },
+  dangerButton: { marginTop: 12, backgroundColor: theme.danger, borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
+  dangerButtonText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
 });

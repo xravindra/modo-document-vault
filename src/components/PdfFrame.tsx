@@ -12,7 +12,7 @@ function allows(url: string): boolean {
 
 const drawsPdf = Platform.OS === 'ios';
 
-export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
+export function PdfFrame({ uri, ratio, resetKey = 0 }: { uri: string; ratio: number; resetKey?: number }) {
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -58,6 +58,7 @@ export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
       {failed ? <Text style={styles.failed}>Could not show this PDF.</Text> : null}
       {width > 0 && source && !failed ? (
         <WebView
+          key={resetKey}
           allowFileAccess
           allowFileAccessFromFileURLs
           allowUniversalAccessFromFileURLs

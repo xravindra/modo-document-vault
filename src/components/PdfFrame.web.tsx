@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createElement } from 'react';
 import { View } from 'react-native';
 
-export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
+export function PdfFrame({ uri, ratio, resetKey = 0 }: { uri: string; ratio: number; resetKey?: number }) {
   const [width, setWidth] = useState(0);
   const height = width > 0 ? Math.max(1, Math.round(width * ratio)) : 1;
   const src = uri.includes('#') ? uri : `${uri}#toolbar=0&navpanes=0&view=FitH`;
@@ -25,6 +25,7 @@ export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
     >
       {width > 0
         ? createElement('iframe', {
+            key: String(resetKey),
             src,
             title: 'Document preview',
             style: {
@@ -35,6 +36,7 @@ export function PdfFrame({ uri, ratio }: { uri: string; ratio: number }) {
               border: 'none',
               display: 'block',
               background: '#ffffff',
+              pointerEvents: 'none',
             },
           })
         : null}

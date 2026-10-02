@@ -354,6 +354,33 @@ class VaultSession {
     });
   }
 
+  toggleFavourite(id: string) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      const favourite = doc.favourite !== true;
+      this.catalog.documents[index] = { ...doc, favourite };
+      this.remember('edit', favourite ? `Marked ${doc.title} as a favourite` : `Removed ${doc.title} from favourites`);
+      await this.persist();
+    });
+  }
+
+  setRotation(id: string, rotation: number) {
+    return this.enqueue(async () => {
+      this.assertOpen();
+      const index = this.catalog.documents.findIndex((item) => item.id === id);
+      const doc = this.catalog.documents[index];
+      if (!doc) return;
+      const next = ((rotation % 360) + 360) % 360;
+      const stored = next === 90 || next === 180 || next === 270 ? next : 0;
+      if ((doc.rotation ?? 0) === stored) return;
+      this.catalog.documents[index] = { ...doc, rotation: stored };
+      await this.persist();
+    });
+  }
+
   removeMember(name: string) {
     return this.enqueue(async () => {
       this.assertOpen();
@@ -462,7 +489,7 @@ class VaultSession {
         const label = field.label.replace(/\s+/g, ' ').trim().slice(0, 80);
         const value = field.value.replace(/\s+/g, ' ').trim().slice(0, 160);
         if (!label && !value) return [];
-        return [{ key: field.key, label: label || 'Field', confidence: field.confidence, value }];
+        return [{ key: field.key, label, confidence: field.confidence, value }];
       });
       const current = pageExtraction(doc, pageIndex);
       const extraction = { ...current, fields: next };

@@ -62,7 +62,8 @@ export function settleCatalog(catalog: Catalog): Catalog {
     if (!memberRole(member)) members = rememberMember(members, member);
     const kind = canonicalCategory(categories, typeof doc.kind === 'string' ? doc.kind : '') || 'other';
     if (!isDocKind(kind)) categories = rememberCategory(categories, kind);
-    return { ...doc, member, kind };
+    const rotation = doc.rotation === 90 || doc.rotation === 180 || doc.rotation === 270 ? doc.rotation : 0;
+    return { ...doc, member, kind, favourite: doc.favourite === true, rotation };
   });
   const memberEmoji: Record<string, string> = {};
   for (const [key, emoji] of Object.entries(sanitizeEmojiMap(catalog.memberEmoji))) {

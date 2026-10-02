@@ -22,6 +22,9 @@ export type Extraction = {
   text: string;
   fields: ExtractedField[];
   note: string;
+  /** Text before Clear noise. Kept so the original wording can be restored. */
+  sourceText?: string;
+  noiseCleared?: boolean;
 };
 
 export type PageCopy = {
@@ -56,6 +59,9 @@ export type VaultDocument = {
   byteLength: number;
   sha256: string;
   createdAt: number;
+  favourite?: boolean;
+  /** Quarter turns clockwise: 0, 90, 180, or 270. */
+  rotation?: number;
   extraction: Extraction;
   pages?: DocumentPage[];
 };

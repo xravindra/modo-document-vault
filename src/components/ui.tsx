@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   AccessibilityInfo,
   Pressable,
@@ -34,6 +34,17 @@ export function usePrefersReducedMotion() {
   return reduced;
 }
 
+type ScreenScroll = {
+  scrollTo: (y: number) => void;
+  contentRef: RefObject<View | null>;
+};
+
+const ScreenScrollContext = createContext<ScreenScroll | null>(null);
+
+export function useScreenScroll(): ScreenScroll {
+  return useContext(ScreenScrollContext) ?? { scrollTo: () => undefined, contentRef: { current: null } };
+}
+
 export function Screen({
   children,
   scroll = true,
@@ -44,10 +55,13 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const pathname = usePathname();
-  const docked = pathname === '/' || pathname === '/library' || pathname === '/activity' || pathname === '/security';
+  const docked = pathname === '/';
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
   const frame = width > 0 ? { width, maxWidth: width } : { width: '100%' as const, maxWidth: '100%' as const };
   const body = (
     <View
+      ref={contentRef}
       style={[
         styles.column,
         {
@@ -61,23 +75,30 @@ export function Screen({
       {children}
     </View>
   );
+  const scrollApi = {
+    contentRef,
+    scrollTo: (y: number) => scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true }),
+  };
   return (
-    <View style={[styles.root, frame]}>
-      <View style={styles.glow} pointerEvents="none" />
-      {scroll ? (
-        <ScrollView
-          horizontal={false}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          style={frame}
-          contentContainerStyle={[styles.scroll, frame]}
-        >
-          {body}
-        </ScrollView>
-      ) : (
-        body
-      )}
-    </View>
+    <ScreenScrollContext.Provider value={scrollApi}>
+      <View style={[styles.root, frame]}>
+        <View style={styles.glow} pointerEvents="none" />
+        {scroll ? (
+          <ScrollView
+            ref={scrollRef}
+            horizontal={false}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={frame}
+            contentContainerStyle={[styles.scroll, frame]}
+          >
+            {body}
+          </ScrollView>
+        ) : (
+          body
+        )}
+      </View>
+    </ScreenScrollContext.Provider>
   );
 }
 
@@ -153,31 +174,38 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.ink, alignItems: 'center', overflow: 'hidden' },
   glow: {
     position: 'absolute',
-    top: -120,
-    width: '80%',
-    maxWidth: 420,
+    top: -160,
+    right: -40,
+    width: '70%',
+    maxWidth: 360,
     aspectRatio: 1,
-    borderRadius: 210,
-    backgroundColor: 'rgba(224, 192, 138, 0.08)',
+    borderRadius: 180,
+    backgroundColor: 'rgba(244, 239, 230, 0.045)',
   },
   scroll: { alignItems: 'center', maxWidth: '100%' },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },
   disabled: { opacity: 0.45 },
-  back: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 12 },
-  backText: { color: theme.gold, fontFamily: font.medium, fontSize: 15 },
+  back: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    marginLeft: -12,
+    borderRadius: 999,
+  },
+  backText: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15 },
   kicker: {
-    color: theme.gold,
-    fontFamily: font.semibold,
-    fontSize: 12,
-    letterSpacing: 2.4,
-    textTransform: 'uppercase',
+    color: theme.paperFaint,
+    fontFamily: font.medium,
+    fontSize: 13,
+    letterSpacing: 0.4,
   },
   headline: {
     color: theme.paper,
     fontFamily: font.display,
     fontSize: 40,
     lineHeight: 46,
-    marginTop: 8,
+    marginTop: 4,
     maxWidth: '100%',
   },
   quiet: {

@@ -6,7 +6,7 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 
 import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
-import { BackButton, Banner, Headline, Kicker, PressableScale, Quiet, Screen } from '@/components/ui';
+import { BackButton, Banner, Headline, PressableScale, Quiet, Screen } from '@/components/ui';
 import { canonicalMember, SELF } from '@/lib/members';
 import { smartDocumentName } from '@/lib/naming';
 import { VaultMark } from '@/components/VaultMark';
@@ -41,6 +41,7 @@ export default function AddScreen() {
   const [member, setMember] = useState(SELF);
   const [kind, setKind] = useState<string | null>(null);
   const [readingLabel, setReadingLabel] = useState('Reading the document…');
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const sampleRef = useRef(false);
 
@@ -193,38 +194,43 @@ export default function AddScreen() {
 
   return (
     <Screen>
-      <BackButton label="Close" />
-      <Kicker>Add</Kicker>
-      <Headline>Seal a document</Headline>
-      <Quiet>Filed under Self unless you choose someone else. Pick a category or type a new one, or leave the category unset and the vault will choose from the text.</Quiet>
+      <BackButton label="Back" />
+      <Headline>Add</Headline>
+      <Quiet>Pick a file. It stays on this phone, under Self, unless you choose someone else.</Quiet>
       <Banner message={message} />
 
       {phase === 'choose' ? (
         <View style={styles.stack}>
-          <MemberPicker
-            members={vault.members}
-            onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
-            onSelect={(name) => {
-              setMember(name);
-              setMessage(null);
-            }}
-            selected={member}
-          />
-          <KindPicker
-            categories={vault.categories}
-            onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
-            onSelect={(next) => {
-              setKind(next);
-              setMessage(null);
-            }}
-            selected={kind}
-          />
-          <Choice label="Choose a file" detail="PDF, image, or text. Several files become pages." onPress={() => void pickDocument()} />
-          <Choice label="Choose a photo" detail="Several photos become pages of one document" onPress={() => void pickImage(false)} />
-          <Choice label="Take a photo" detail="Camera, used only for this capture" onPress={() => void pickImage(true)} />
-          <Choice
-            label="Try the sample passport"
-            detail="A generated PDF, filed under Self unless you choose someone else"
+          <Choice primary label="Choose a file" detail="PDF, photo, or text" onPress={() => void pickDocument()} />
+          <Choice label="Choose a photo" detail="From this phone" onPress={() => void pickImage(false)} />
+          <Choice label="Take a photo" detail="Uses the camera once" onPress={() => void pickImage(true)} />
+          <PressableScale accessibilityLabel="Person and category" onPress={() => setDetailsOpen((open) => !open)} style={styles.detailsToggle}>
+            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Hide details' : 'Person and category'}</Text>
+          </PressableScale>
+          {detailsOpen ? (
+            <View style={styles.details}>
+              <MemberPicker
+                members={vault.members}
+                onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
+                onSelect={(name) => {
+                  setMember(name);
+                  setMessage(null);
+                }}
+                selected={member}
+              />
+              <KindPicker
+                categories={vault.categories}
+                onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
+                onSelect={(next) => {
+                  setKind(next);
+                  setMessage(null);
+                }}
+                selected={kind}
+              />
+            </View>
+          ) : null}
+          <PressableScale
+            accessibilityLabel="Try the sample passport"
             onPress={() => {
               void readPicked({
                 bytes: buildSamplePassportPdf(),
@@ -236,7 +242,9 @@ export default function AddScreen() {
                 extraPages: [],
               });
             }}
-          />
+          >
+            <Text style={styles.sample}>Try a sample passport</Text>
+          </PressableScale>
         </View>
       ) : null}
 
@@ -250,20 +258,41 @@ export default function AddScreen() {
   );
 }
 
-function Choice({ label, detail, onPress }: { label: string; detail: string; onPress: () => void }) {
+function Choice({ label, detail, onPress, primary = false }: { label: string; detail: string; onPress: () => void; primary?: boolean }) {
   return (
-    <PressableScale accessibilityLabel={label} onPress={onPress} style={styles.choice}>
-      <Text style={styles.choiceLabel}>{label}</Text>
-      <Text style={styles.choiceDetail}>{detail}</Text>
+    <PressableScale accessibilityLabel={label} onPress={onPress} style={[styles.choice, primary ? styles.choicePrimary : null]}>
+      <View style={styles.choiceCopy}>
+        <Text style={[styles.choiceLabel, primary ? styles.choiceLabelPrimary : null]}>{label}</Text>
+        <Text style={[styles.choiceDetail, primary ? styles.choiceDetailPrimary : null]}>{detail}</Text>
+      </View>
+      <Text style={[styles.choiceGo, primary ? styles.choiceGoPrimary : null]}>›</Text>
     </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { marginTop: 8, gap: 10 },
-  choice: { borderRadius: 20, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.inkRaised, padding: 16 },
-  choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  stack: { marginTop: 22, gap: 10 },
+  choice: {
+    borderRadius: 24,
+    backgroundColor: theme.inkRaised,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  choicePrimary: { backgroundColor: theme.paper },
+  choiceCopy: { flex: 1, minWidth: 0 },
+  choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 17 },
+  choiceLabelPrimary: { color: theme.ink },
   choiceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 4 },
-  reading: { alignItems: 'center', marginTop: 24 },
-  readingText: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
+  choiceDetailPrimary: { color: 'rgba(7, 7, 8, 0.55)' },
+  choiceGo: { color: theme.paperFaint, fontSize: 28, lineHeight: 30 },
+  choiceGoPrimary: { color: theme.ink },
+  reading: { alignItems: 'center', marginTop: 36 },
+  readingText: { color: theme.paper, fontFamily: font.medium, fontSize: 16, marginTop: 8 },
+  detailsToggle: { paddingVertical: 10 },
+  detailsToggleText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  details: { gap: 12 },
+  sample: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15, marginTop: 8 },
 });

@@ -6,13 +6,16 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { ActionIcon, type ActionName } from '@/components/ActionIcon';
 import { FieldRow } from '@/components/FieldRow';
+import { ZoomFrame } from '@/components/ZoomFrame';
 import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
 import { PdfFrame } from '@/components/PdfFrame';
 import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
-import { BackButton, Banner, Headline, Kicker, PressableScale, Screen } from '@/components/ui';
+import { BackButton, Banner, Headline, PressableScale, Screen } from '@/components/ui';
 import { deliverFile, previewUri, shareDocument } from '@/lib/deliver';
 import { extractDocument } from '@/lib/extract';
+import { parseFields } from '@/lib/fields';
+import { clearNoise } from '@/lib/noise';
 import { engineLabel, formatBytes, shareSummary } from '@/lib/format';
 import { documentMember } from '@/lib/members';
 import { documentPages, MAX_PAGES, pageExtraction } from '@/lib/pages';
@@ -51,6 +54,9 @@ export default function DocumentScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [turn, setTurn] = useState(0);
+  const [zoomKey, setZoomKey] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
   const [memberOpen, setMemberOpen] = useState(false);
   const [kindOpen, setKindOpen] = useState(false);
   const { width, height } = useWindowDimensions();
@@ -125,7 +131,12 @@ export default function DocumentScreen() {
     setMenuOpen(false);
     setMemberOpen(false);
     setKindOpen(false);
+    setZoomKey((value) => value + 1);
   }, [id, pageIndex]);
+
+  useEffect(() => {
+    setTurn(doc?.rotation ?? 0);
+  }, [doc?.id, doc?.rotation]);
 
   const passwordProtected = useMemo(() => {
     if (integrity !== 'ok' || !plain) return false;
@@ -232,6 +243,51 @@ export default function DocumentScreen() {
       setExtracting(false);
       vault.releaseAutoLock();
     }
+  }
+
+  async function toggleNoise() {
+    if (!doc) return;
+    const current = pageExtraction(doc, pageIndex);
+    const source = current.sourceText ?? current.text;
+    const cleared = current.noiseCleared !== true;
+    const text = cleared ? clearNoise(source) : source;
+    const extraction = {
+      ...current,
+      sourceText: source,
+      noiseCleared: cleared,
+      text,
+      fields: parseFields(text),
+      note: cleared ? 'Noise was hidden. You can show the original wording again.' : current.note,
+    };
+    await vault.saveExtraction(doc.id, extraction, pageIndex);
+    setFields(extraction.fields.map((field) => ({ ...field })));
+    setMessage(cleared ? 'Hid noisy lines. Open More to show the original text.' : 'Showing the original text.');
+  }
+
+  async function rotateDocument() {
+    if (!doc) return;
+    const next = ((doc.rotation ?? 0) + 90) % 360;
+    setTurn(next);
+    await vault.setRotation(doc.id, next);
+  }
+
+  async function resetDocument() {
+    if (!doc) return;
+    const current = pageExtraction(doc, pageIndex);
+    const source = current.sourceText ?? current.text;
+    const extraction = {
+      ...current,
+      sourceText: source,
+      noiseCleared: false,
+      text: source,
+      fields: parseFields(source),
+    };
+    setTurn(0);
+    setZoomKey((value) => value + 1);
+    await vault.saveExtraction(doc.id, extraction, pageIndex);
+    await vault.setRotation(doc.id, 0);
+    setFields(extraction.fields.map((field) => ({ ...field })));
+    setMessage('Reset this document to the original view and text.');
   }
 
   async function shareDetails() {
@@ -423,27 +479,60 @@ export default function DocumentScreen() {
   const extracted = pageExtraction(doc, shownIndex);
   const shownName = page?.fileName ?? doc.fileName;
 
+  function changePage(step: number) {
+    setPageIndex((current) => Math.min(pages.length - 1, Math.max(0, current + step)));
+  }
+
   return (
     <Screen>
-      <View style={styles.topBar}>
-        <BackButton label="Back" style={styles.backInBar} />
-        <Pressable
-          accessibilityLabel={menuOpen ? 'Close actions' : 'Actions'}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: menuOpen }}
-          onPress={() => setMenuOpen((open) => !open)}
-          style={styles.menuButton}
-        >
-          <View style={styles.burger} />
-          <View style={styles.burger} />
-          <View style={styles.burger} />
-        </Pressable>
+      <BackButton label="Documents" style={styles.backInBar} />
+      <View style={styles.titleRow}>
+        <View style={styles.titleCopy}>
+          <Headline>{doc.title}</Headline>
+        </View>
+        <View style={styles.titleActions}>
+          {zoomed ? (
+            <PressableScale
+              accessibilityLabel="Recenter document"
+              onPress={() => {
+                setZoomed(false);
+                setZoomKey((value) => value + 1);
+              }}
+              style={styles.centerHit}
+            >
+              <Text style={styles.centerText}>Center</Text>
+            </PressableScale>
+          ) : null}
+          <PressableScale
+            accessibilityLabel={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
+            onPress={() => void vault.toggleFavourite(doc.id)}
+            style={styles.heartHit}
+          >
+            <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
+          </PressableScale>
+        </View>
       </View>
-      <PressableScale accessibilityLabel="Change category" onPress={() => setKindOpen((open) => !open)} style={styles.kickerRow}>
-        <CategoryAvatar kind={doc.kind} size={28} />
-        <Kicker>{kindLabel(doc.kind)}</Kicker>
-      </PressableScale>
-      <Headline>{doc.title}</Headline>
+      <View style={styles.quick}>
+        <PressableScale
+          accessibilityLabel={`Share ${shownName}`}
+          disabled={!plain || integrity !== 'ok'}
+          onPress={() => void shareFile()}
+          style={styles.quickPrimary}
+        >
+          <Text style={styles.quickPrimaryText}>Share</Text>
+        </PressableScale>
+        <PressableScale
+          accessibilityLabel={`Download ${shownName}`}
+          disabled={!plain || integrity !== 'ok'}
+          onPress={() => void download()}
+          style={styles.quickSecondary}
+        >
+          <Text style={styles.quickSecondaryText}>Download</Text>
+        </PressableScale>
+        <PressableScale accessibilityLabel="More actions" onPress={() => setMenuOpen(true)} style={styles.quickSecondary}>
+          <Text style={styles.quickSecondaryText}>More</Text>
+        </PressableScale>
+      </View>
       <PressableScale
         accessibilityLabel={`Change family member, currently ${documentMember(doc)}`}
         onPress={() => setMemberOpen((open) => !open)}
@@ -542,7 +631,7 @@ export default function DocumentScreen() {
             <Text style={[styles.pageStepText, pageIndex === 0 ? styles.pageStepOff : null]}>Previous</Text>
           </PressableScale>
           <Text style={styles.pageCount}>
-            Page {pageIndex + 1} of {pages.length}
+            Page {pageIndex + 1} of {pages.length}. Swipe the page sideways.
           </Text>
           <PressableScale
             accessibilityLabel="Next page"
@@ -559,25 +648,22 @@ export default function DocumentScreen() {
           {integrity === 'checking'
             ? 'Checking integrity…'
             : integrity === 'ok'
-              ? 'SHA-256 matches the sealed original'
-              : 'Integrity check failed. The file was not shown.'}
+              ? 'Checked'
+              : 'This file could not be verified.'}
         </Text>
       </View>
       <Banner message={message} />
       {preview ? (
-        <View style={styles.previewCard}>
-          {mime.startsWith('image/') ? (
-            <Image
-              accessibilityLabel="Document preview"
-              resizeMode="contain"
-              source={{ uri: preview }}
-              style={[styles.preview, imageRatio ? { aspectRatio: imageRatio } : styles.imagePending]}
-            />
-          ) : null}
-          {mime.includes('pdf') && plain ? <PdfFrame uri={preview} ratio={pdfPageRatio(plain)} /> : null}
-          {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
-            <Text style={styles.fileFace}>{extracted.text || doc.title}</Text>
-          ) : null}
+        <View style={[styles.previewCard, styles.previewFrame]}>
+          <ZoomFrame onSwipe={pages.length > 1 ? changePage : undefined} onZoomed={setZoomed} resetKey={zoomKey} rotation={turn}>
+            {mime.startsWith('image/') ? (
+              <Image accessibilityLabel="Document preview" resizeMode="contain" source={{ uri: preview }} style={styles.previewFill} />
+            ) : null}
+            {mime.includes('pdf') && plain ? <PdfFrame resetKey={zoomKey} uri={preview} ratio={pdfPageRatio(plain)} /> : null}
+            {!mime.startsWith('image/') && !(mime.includes('pdf') && plain) ? (
+              <Text style={styles.fileFace}>{extracted.text || doc.title}</Text>
+            ) : null}
+          </ZoomFrame>
         </View>
       ) : null}
       <Text style={styles.note}>{extracted.note}</Text>
@@ -689,6 +775,27 @@ export default function DocumentScreen() {
             icon="extract"
             label={extracting ? 'Extracting…' : 'Extract text'}
             onPress={() => void extractText()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel={extracted.noiseCleared ? 'Show the original text' : 'Clear noise from the text'}
+            icon="details"
+            label={extracted.noiseCleared ? 'Show original text' : 'Clear noise'}
+            onPress={() => void toggleNoise()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Rotate document"
+            icon="details"
+            label="Rotate"
+            onPress={() => void rotateDocument()}
+          />
+          <ActionButton
+            dismiss={() => setMenuOpen(false)}
+            accessibilityLabel="Reset document to the original"
+            icon="details"
+            label="Reset to original"
+            onPress={() => void resetDocument()}
           />
           <ActionButton dismiss={() => setMenuOpen(false)}
             accessibilityLabel={`Download ${shownName}`}
@@ -837,19 +944,17 @@ const styles = StyleSheet.create({
   },
   categoryCopy: { flex: 1, minWidth: 0 },
   categoryLabel: {
-    color: theme.gold,
-    fontFamily: font.semibold,
-    fontSize: 12,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    color: theme.paperFaint,
+    fontFamily: font.medium,
+    fontSize: 13,
   },
   categoryValue: { color: theme.paper, fontFamily: font.medium, fontSize: 16, marginTop: 2 },
   categoryAction: {
     color: theme.ink,
     fontFamily: font.semibold,
-    fontSize: 15,
-    backgroundColor: theme.gold,
-    borderRadius: 12,
+    fontSize: 14,
+    backgroundColor: theme.paper,
+    borderRadius: 999,
     overflow: 'hidden',
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -880,12 +985,21 @@ const styles = StyleSheet.create({
   },
   badgeBad: { backgroundColor: 'rgba(224, 139, 122, 0.14)' },
   badgeText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  titleCopy: { flex: 1, minWidth: 0 },
+  titleActions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8 },
+  centerHit: { borderRadius: 999, backgroundColor: theme.paper, paddingHorizontal: 12, paddingVertical: 6 },
+  centerText: { color: theme.ink, fontFamily: font.semibold, fontSize: 13 },
+  heartHit: { paddingHorizontal: 4 },
+  heart: { fontSize: 28 },
+  previewFrame: { width: '100%', aspectRatio: 210 / 297 },
+  previewFill: { width: '100%', height: '100%' },
   previewCard: {
     width: '100%',
     maxWidth: '100%',
     marginTop: 16,
     padding: 0,
-    borderRadius: 22,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: theme.line,
     backgroundColor: theme.inkRaised,
@@ -964,6 +1078,17 @@ const styles = StyleSheet.create({
   },
   unlockCancelText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
   unlockSubmitText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
+  quick: { flexDirection: 'row', gap: 8, marginTop: 18 },
+  quickPrimary: { flex: 1.2, backgroundColor: theme.paper, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
+  quickPrimaryText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
+  quickSecondary: {
+    flex: 1,
+    backgroundColor: theme.inkRaised,
+    borderRadius: 999,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  quickSecondaryText: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
   topBar: {
     width: '100%',
     maxWidth: '100%',

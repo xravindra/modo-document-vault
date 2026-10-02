@@ -4,11 +4,11 @@ import { router, type Href } from 'expo-router';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { ActionIcon } from '@/components/ActionIcon';
-import { CategoryAvatar, MemberAvatar } from '@/components/Avatar';
+import { MemberAvatar } from '@/components/Avatar';
 import { DocumentPreview } from '@/components/DocumentPreview';
 import { PressableScale } from '@/components/ui';
 import { deliverFile, shareDocument } from '@/lib/deliver';
-import { engineLabel, formatBytes, formatWhen } from '@/lib/format';
+import { formatBytes, formatWhen } from '@/lib/format';
 import { kindLabel, type VaultDocument } from '@/lib/types';
 import { documentMember } from '@/lib/members';
 import { useVault } from '@/state/VaultContext';
@@ -29,6 +29,7 @@ function Card({
   const swipeRef = useRef<SwipeableMethods>(null);
   const acting = useRef(false);
   const [note, setNote] = useState<string | null>(null);
+  const [frameWidth, setFrameWidth] = useState(240);
 
   async function run(mode: 'share' | 'download') {
     if (acting.current) return;
@@ -61,26 +62,43 @@ function Card({
   }
 
   const body = (
-    <PressableScale
-      accessibilityLabel={`Open ${doc.title}`}
-      onPress={() => router.push(`/document/${doc.id}` as Href)}
-      style={[styles.card, showFile ? styles.cardFile : null, carousel ? styles.cardCarousel : null]}
+    <View
+      style={[
+        styles.card,
+        showFile ? styles.cardFile : null,
+        carousel ? styles.cardCarousel : null,
+        showFile ? { width: frameWidth } : null,
+      ]}
     >
-      {showFile ? <DocumentPreview doc={doc} /> : <View style={styles.rule} />}
-      <View style={styles.copy}>
-        <View style={styles.kindRow}>
-          <CategoryAvatar kind={doc.kind} size={22} />
-          <MemberAvatar name={documentMember(doc)} size={22} />
-          <Text numberOfLines={1} style={styles.kind}>
-            {kindLabel(doc.kind)} · {documentMember(doc)}
+      <PressableScale
+        accessibilityLabel={`Open ${doc.title}`}
+        onPress={() => router.push(`/document/${doc.id}` as Href)}
+        style={[styles.open, showFile ? styles.openFile : null]}
+      >
+        {showFile ? <DocumentPreview doc={doc} onWidth={setFrameWidth} /> : <MemberAvatar name={documentMember(doc)} size={44} />}
+        <View style={[styles.copy, showFile ? styles.copyFile : null]}>
+          <Text numberOfLines={carousel ? 2 : 1} style={styles.title}>
+            {doc.title}
           </Text>
+          <Text numberOfLines={1} style={styles.meta}>
+            {note ?? `${documentMember(doc)} · ${kindLabel(doc.kind)}`}
+          </Text>
+          {note ? null : (
+            <Text numberOfLines={1} style={styles.when}>
+              {formatWhen(doc.createdAt)} · {formatBytes(doc.byteLength)}
+            </Text>
+          )}
         </View>
-        <Text numberOfLines={carousel ? 2 : undefined} style={styles.title}>{doc.title}</Text>
-        <Text numberOfLines={carousel ? 2 : undefined} style={styles.meta}>
-          {note ?? `${formatWhen(doc.createdAt)} · ${formatBytes(doc.byteLength)} · ${engineLabel(doc.extraction.engine)}`}
-        </Text>
-      </View>
-    </PressableScale>
+        {showFile ? null : <Text style={styles.chevron}>›</Text>}
+      </PressableScale>
+      <PressableScale
+        accessibilityLabel={doc.favourite ? `Remove ${doc.title} from favourites` : `Mark ${doc.title} as a favourite`}
+        onPress={() => void vault.toggleFavourite(doc.id)}
+        style={[styles.heartHit, showFile ? styles.heartFloat : null]}
+      >
+        <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
+      </PressableScale>
+    </View>
   );
 
   if (!swipe) return body;
@@ -120,30 +138,39 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
+    position: 'relative',
     flexDirection: 'row',
-    backgroundColor: theme.inkRaised,
-    borderRadius: 22,
+    alignItems: 'center',
+    backgroundColor: theme.inkSoft,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: theme.line,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 12,
   },
-  cardFile: { flexDirection: 'column' },
-  cardCarousel: { marginBottom: 0, width: '100%' },
-  rule: { width: 4, backgroundColor: theme.goldDeep },
-  copy: { flex: 1, minWidth: 0, paddingHorizontal: 16, paddingVertical: 16 },
-  kindRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  kind: {
-    flex: 1,
-    minWidth: 0,
-    color: theme.gold,
-    fontFamily: font.semibold,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+  cardFile: { flexDirection: 'column', alignItems: 'stretch', paddingHorizontal: 0, paddingVertical: 0, gap: 0 },
+  cardCarousel: { marginBottom: 0, alignSelf: 'flex-start' },
+  open: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  openFile: { width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: 0 },
+  copy: { flex: 1, minWidth: 0 },
+  copyFile: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 },
+  title: { color: theme.paper, fontFamily: font.semibold, fontSize: 17, lineHeight: 22 },
+  meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 3 },
+  when: { color: theme.paperFaint, fontFamily: font.body, fontSize: 13, marginTop: 2 },
+  chevron: { color: theme.paperFaint, fontSize: 26, lineHeight: 28, marginLeft: 4 },
+  heartHit: { padding: 4 },
+  heartFloat: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    borderRadius: 16,
+    backgroundColor: 'rgba(5, 5, 5, 0.45)',
   },
-  title: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 22, marginTop: 4 },
-  meta: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, marginTop: 6 },
+  heart: { fontSize: 20 },
   swipeWrap: { width: '100%', maxWidth: '100%', alignSelf: 'stretch' },
   swipe: {
     width: 108,

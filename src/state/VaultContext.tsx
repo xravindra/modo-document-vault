@@ -34,6 +34,8 @@ type VaultApi = VaultModel & {
   addDocument: (input: AddDocumentInput) => Promise<VaultDocument>;
   assignMember: (id: string, member: string) => Promise<void>;
   assignKind: (id: string, kind: string) => Promise<void>;
+  toggleFavourite: (id: string) => Promise<void>;
+  setRotation: (id: string, rotation: number) => Promise<void>;
   setMemberEmoji: (member: string, emoji: string) => Promise<void>;
   setCategoryEmoji: (kind: string, emoji: string) => Promise<void>;
   removeMember: (member: string) => Promise<void>;
@@ -194,6 +196,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       },
       assignMember: (id, member) => run(() => session.assignMember(id, member), 'unlocked'),
       assignKind: (id, kind) => run(() => session.assignKind(id, kind), 'unlocked'),
+      toggleFavourite: (id) => run(() => session.toggleFavourite(id), 'unlocked'),
+      setRotation: (id, rotation) => run(() => session.setRotation(id, rotation), 'unlocked'),
       setMemberEmoji: (member, emoji) => run(() => session.setMemberEmoji(member, emoji), 'unlocked'),
       setCategoryEmoji: (kind, emoji) => run(() => session.setCategoryEmoji(kind, emoji), 'unlocked'),
       removeMember: (member) => run(() => session.removeMember(member), 'unlocked'),

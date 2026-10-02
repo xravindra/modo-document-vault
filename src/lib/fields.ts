@@ -46,12 +46,14 @@ function captured(fields: ExtractedField[], value: string): boolean {
 function pushField(fields: ExtractedField[], field: ExtractedField) {
   if (fields.length >= MAX_FIELDS) return;
   const value = clean(field.value);
-  if (!readable(value) || captured(fields, value)) return;
+  const label = field.label.replace(/\s+/g, ' ').trim();
+  if (!label && !readable(value)) return;
+  if (value && (!readable(value) || captured(fields, value))) return;
   const sameKey = new RegExp(`^${field.key}(?:-\\d+)?$`);
   const repeats = fields.filter((item) => sameKey.test(item.key)).length;
   const key = repeats === 0 ? field.key : `${field.key}-${repeats + 1}`;
-  const label = repeats === 0 ? field.label : `${field.label} ${repeats + 1}`;
-  fields.push({ ...field, key, label, value });
+  const nextLabel = !label ? '' : repeats === 0 ? label : `${label} ${repeats + 1}`;
+  fields.push({ ...field, key, label: nextLabel, value });
 }
 
 function matches(text: string, pattern: RegExp): string[] {
@@ -144,6 +146,34 @@ export function parseFields(text: string): ExtractedField[] {
   collect(fields, matches(text, URL).map((item) => item.replace(/[.,;)]+$/g, '')), 'url', 'Link', 0.8);
   collect(fields, matches(text, IBAN), 'iban', 'IBAN', 0.74);
   collect(fields, matches(text, AMOUNT), 'amount', 'Amount', 0.7);
+  collect(fields, matches(text, /\b(?:\d{4}\s\d{4}\s\d{4}|[A-Z]{5}\d{4}[A-Z]|[A-Z]{1,3}\d{6,12})\b/g), 'id', '', 0.66);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (/^[A-Z0-9<]{30,44}$/.test(line)) continue;
+    const labelOnly = line.match(/^([\p{L}][\p{L}\p{M}\p{N}&/'(). ]{0,32}?)\s*[:：]\s*$/u);
+    if (labelOnly?.[1]) {
+      const label = clean(labelOnly[1]);
+      if (!label || SKIP_LABEL.test(label)) continue;
+      const next = lines[index + 1] ?? '';
+      const nextIsValue = readable(next) && !next.includes(':') && next.split(' ').length <= 8 && !/^[A-Z0-9<]{30,44}$/.test(next);
+      const key = label.toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
+      pushField(fields, { key, label, value: nextIsValue ? next : '', confidence: 0.8 });
+      if (nextIsValue) index += 1;
+      continue;
+    }
+    if (fields.some((item) => item.value && line.toLowerCase().includes(item.value.toLowerCase()))) continue;
+    if (readable(line) && line.split(' ').length <= 6 && /[\p{N}]/u.test(line) && !line.includes(':')) {
+      pushField(fields, { key: 'value', label: '', value: line, confidence: 0.62 });
+    }
+  }
+
+  if (fields.length === 0) {
+    for (const line of lines) {
+      if (!readable(line) || line.split(' ').length > 8 || /^[A-Z0-9<]{30,44}$/.test(line)) continue;
+      pushField(fields, { key: 'value', label: '', value: line, confidence: 0.55 });
+    }
+  }
 
   return fields;
 }
