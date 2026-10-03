@@ -14,7 +14,7 @@ import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
 const LOCKS = [
-  { ms: 0, label: 'Right away' },
+  { ms: 0, label: '0 sec' },
   { ms: 60_000, label: '1 min' },
   { ms: 300_000, label: '5 min' },
   { ms: -1, label: 'Never' },

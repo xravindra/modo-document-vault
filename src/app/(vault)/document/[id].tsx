@@ -163,7 +163,8 @@ export default function DocumentScreen() {
     : (mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf')) && plain
       ? 1 / Math.max(pdfPageRatio(plain), 0.2)
       : 210 / 297;
-  const face = frameSize(height, frameAspect > 0 ? 1 / frameAspect : 297 / 210);
+  const stageWidth = Math.min(width, 560) - 36 - 2 - 24;
+  const face = frameSize(height, frameAspect > 0 ? 1 / frameAspect : 297 / 210, Math.round(height * 0.72), stageWidth);
   const imageFile = mime.startsWith('image/');
   const pdfFile = mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
   const collageCount = (plain && canEmbedImage(mime) ? 1 : 0) + collageExtras.length;
@@ -1146,12 +1147,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.line,
     backgroundColor: theme.inkRaised,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 14,
     overflow: 'hidden',
   },
-  previewScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  previewCard: { backgroundColor: theme.sheet, overflow: 'hidden' },
+  previewScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  previewCard: { backgroundColor: theme.sheet, overflow: 'hidden', borderRadius: 12 },
   previewFill: { width: '100%', height: '100%', margin: 0, padding: 0, borderWidth: 0 },
   fileFace: {
     width: '100%',

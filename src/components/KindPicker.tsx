@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AddAvatarChoice, AvatarChoice, EmojiPicker } from '@/components/Avatar';
+import { AddAvatarChoice, CategoryChoice } from '@/components/Avatar';
 import { PressableScale } from '@/components/ui';
 import { canonicalCategory, sameCategory } from '@/lib/categories';
-import { categoryMark } from '@/lib/emoji';
 import { isDocKind, KINDS, kindLabel } from '@/lib/types';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -22,7 +21,6 @@ export function KindPicker({
 }) {
   const [draft, setDraft] = useState('');
   const [composing, setComposing] = useState(false);
-  const [emojiOpen, setEmojiOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const vault = useVault();
   const custom = categories.filter((name) => !isDocKind(name));
@@ -62,11 +60,11 @@ export function KindPicker({
       <Text style={styles.label}>Category</Text>
       <View style={styles.people}>
         {KINDS.map((kind) => (
-          <AvatarChoice
+          <CategoryChoice
             key={kind.id}
             accessibilityLabel={`Category ${kind.label}`}
-            emoji={categoryMark(kind.id, vault.categoryEmoji)}
-            name={kind.label}
+            kind={kind.id}
+            label={kind.label}
             onPress={() => onSelect(kind.id)}
             selected={selected === kind.id}
           />
@@ -75,20 +73,17 @@ export function KindPicker({
           const removable = custom.some((item) => sameCategory(item, name));
           return (
             <View key={name} style={styles.slot}>
-              <AvatarChoice
+              <CategoryChoice
                 accessibilityLabel={`Category ${name}`}
-                emoji={categoryMark(name, vault.categoryEmoji)}
-                name={kindLabel(name)}
+                kind={name}
+                label={kindLabel(name)}
                 onPress={() => onSelect(name)}
                 selected={selected !== null && sameCategory(name, selected)}
               />
               {removable ? (
                 <PressableScale
                   accessibilityLabel={`Delete ${name}`}
-                  onPress={() => {
-                    setEmojiOpen(false);
-                    setPendingDelete(name);
-                  }}
+                  onPress={() => setPendingDelete(name)}
                   style={styles.remove}
                 >
                   <Text style={styles.removeText}>×</Text>
@@ -99,22 +94,6 @@ export function KindPicker({
         })}
         <AddAvatarChoice accessibilityLabel="Add category" onPress={add} />
       </View>
-      {selected ? (
-        <PressableScale accessibilityLabel="Set category emoji" onPress={() => setEmojiOpen((open) => !open)} style={styles.emojiToggle}>
-          <Text style={styles.emojiToggleText}>{emojiOpen ? 'Close emojis' : 'Set emoji'}</Text>
-        </PressableScale>
-      ) : null}
-      {emojiOpen && selected ? (
-        <EmojiPicker
-          onSelect={(emoji) => {
-            void vault
-              .setCategoryEmoji(selected, emoji)
-              .then(() => setEmojiOpen(false))
-              .catch(() => undefined);
-          }}
-          selected={categoryMark(selected, vault.categoryEmoji)}
-        />
-      ) : null}
       {pendingDelete ? (
         <View style={styles.confirm}>
           <Text style={styles.confirmText}>Delete {kindLabel(pendingDelete)}? Documents in {kindLabel(pendingDelete)} move to Other.</Text>
@@ -177,8 +156,6 @@ const styles = StyleSheet.create({
   cancelText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
   delete: { borderRadius: 14, backgroundColor: theme.danger, paddingHorizontal: 14, paddingVertical: 10 },
   deleteText: { color: theme.ink, fontFamily: font.semibold, fontSize: 14 },
-  emojiToggle: { alignSelf: 'flex-start', marginTop: 12 },
-  emojiToggleText: { color: theme.gold, fontFamily: font.medium, fontSize: 14 },
   input: {
     width: '100%',
     marginTop: 12,

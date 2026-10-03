@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
+import { Icon } from '@/components/Icon';
 import { PressableScale } from '@/components/ui';
 import { hapticTick } from '@/lib/haptics';
 import { PIN_LENGTH } from '@/lib/pin';
@@ -101,7 +102,7 @@ export function PinPad({
                 onPress={() => press(key)}
                 style={styles.key}
               >
-                <Text style={styles.keyText}>{key === 'del' ? '⌫' : key}</Text>
+                {key === 'del' ? <Icon color={theme.gold} name="back" size={22} weight={2} /> : <Text style={styles.keyText}>{key}</Text>}
               </PressableScale>
             ),
           )}

@@ -1,13 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 
-import { EveryoneFigure, PersonFigure } from '@/components/Avatar';
+import { CategoryIcon, PersonIcon } from '@/components/Avatar';
 import { DocumentStack } from '@/components/DocumentStack';
 import { Icon, type IconName } from '@/components/Icon';
 import { PlanBanner } from '@/components/PlanBanner';
 import { IconButton, PressableScale, Screen, SectionTitle } from '@/components/ui';
-import { categoryMark } from '@/lib/emoji';
 import { compareMembers, documentMember } from '@/lib/members';
 import { documentPages } from '@/lib/pages';
 import { groupByKind, kindLabel } from '@/lib/types';
@@ -30,8 +29,12 @@ export default function HomeScreen() {
   const needle = query.trim().toLowerCase();
 
   const people = useMemo(() => {
-    const names = new Set(vault.documents.map((doc) => documentMember(doc)));
-    return [...names].sort(compareMembers);
+    const counts = new Map<string, number>();
+    for (const doc of vault.documents) {
+      const name = documentMember(doc);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.keys()].sort(compareMembers).map((name) => ({ name, count: counts.get(name) ?? 0 }));
   }, [vault.documents]);
 
   const scoped = useMemo(
@@ -123,24 +126,16 @@ export default function HomeScreen() {
             <>
               <SectionTitle action={{ label: 'See all', onPress: () => router.push('/library' as Href) }}>Family</SectionTitle>
               <ScrollView horizontal contentContainerStyle={styles.people} showsHorizontalScrollIndicator={false}>
-                <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.person}>
-                  <EveryoneFigure selected={person === 'all'} />
-                  <Text numberOfLines={1} style={[styles.personName, person === 'all' ? styles.personOn : null]}>
-                    Everyone
-                  </Text>
-                </PressableScale>
-                {people.map((name) => (
-                  <PressableScale
-                    key={name}
-                    accessibilityLabel={`Show ${name}`}
-                    onPress={() => setPerson((current) => (current === name ? 'all' : name))}
-                    style={styles.person}
-                  >
-                    <PersonFigure name={name} selected={person === name} />
-                    <Text numberOfLines={1} style={[styles.personName, person === name ? styles.personOn : null]}>
-                      {name}
-                    </Text>
-                  </PressableScale>
+                <PersonChip count={count} label="All" on={person === 'all'} onPress={() => setPerson('all')} />
+                {people.map((entry) => (
+                  <PersonChip
+                    key={entry.name}
+                    count={entry.count}
+                    label={entry.name}
+                    name={entry.name}
+                    on={person === entry.name}
+                    onPress={() => setPerson((current) => (current === entry.name ? 'all' : entry.name))}
+                  />
                 ))}
               </ScrollView>
             </>
@@ -151,25 +146,21 @@ export default function HomeScreen() {
               <SectionTitle action={kind !== 'all' ? { label: 'Show all', onPress: () => setKind('all') } : undefined}>
                 Categories
               </SectionTitle>
-              <View style={styles.tiles}>
+              <ScrollView horizontal contentContainerStyle={styles.people} showsHorizontalScrollIndicator={false}>
                 {categories.map((group) => {
                   const on = kind === group.kind;
                   return (
-                    <PressableScale
+                    <Chip
                       key={group.kind}
-                      accessibilityLabel={`${group.label}, ${group.documents.length}`}
+                      count={group.documents.length}
+                      icon={<CategoryIcon kind={group.kind} selected={on} size={36} />}
+                      label={group.label}
+                      on={on}
                       onPress={() => setKind(on ? 'all' : group.kind)}
-                      style={[styles.tile, on ? styles.tileOn : null]}
-                    >
-                      <Text style={styles.tileMark}>{categoryMark(group.kind, vault.categoryEmoji)}</Text>
-                      <Text numberOfLines={1} style={[styles.tileLabel, on ? styles.tileLabelOn : null]}>
-                        {group.label}
-                      </Text>
-                      <Text style={[styles.tileCount, on ? styles.tileCountOn : null]}>{group.documents.length}</Text>
-                    </PressableScale>
+                    />
                   );
                 })}
-              </View>
+              </ScrollView>
             </>
           ) : null}
 
@@ -187,6 +178,36 @@ export default function HomeScreen() {
         </>
       )}
     </Screen>
+  );
+}
+
+function PersonChip({ name, ...rest }: { label: string; name?: string; count: number; on: boolean; onPress: () => void }) {
+  return <Chip {...rest} icon={<PersonIcon name={name} selected={rest.on} size={36} />} />;
+}
+
+function Chip({
+  label,
+  icon,
+  count,
+  on,
+  onPress,
+}: {
+  label: string;
+  icon: ReactNode;
+  count: number;
+  on: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <PressableScale accessibilityLabel={`${label}, ${count} documents`} onPress={onPress} style={[styles.person, on ? styles.personOn : null]}>
+      {icon}
+      <View style={styles.personCopy}>
+        <Text numberOfLines={1} style={[styles.personName, on ? styles.personNameOn : null]}>
+          {label}
+        </Text>
+        <Text style={styles.personCount}>{count === 1 ? '1 doc' : `${count} docs`}</Text>
+      </View>
+    </PressableScale>
   );
 }
 
@@ -221,28 +242,24 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, minWidth: 0, color: theme.paper, fontFamily: font.body, fontSize: 16, paddingVertical: 14 },
   clear: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  people: { flexDirection: 'row', gap: 12, paddingRight: 8 },
-  person: { width: 72, alignItems: 'center', gap: 6 },
-  personName: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13, textAlign: 'center', maxWidth: 72 },
-  personOn: { color: theme.gold, fontFamily: font.semibold },
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: {
-    width: '31%',
-    flexGrow: 1,
-    minHeight: 96,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.line,
+  people: { flexDirection: 'row', gap: 8, paddingRight: 8 },
+  person: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 52,
+    paddingLeft: 8,
+    paddingRight: 16,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: theme.inkRaised,
     backgroundColor: theme.inkRaised,
-    padding: 12,
-    justifyContent: 'space-between',
   },
-  tileOn: { backgroundColor: theme.gold, borderColor: theme.gold },
-  tileMark: { fontSize: 24 },
-  tileLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 14, marginTop: 8 },
-  tileLabelOn: { color: theme.ink },
-  tileCount: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13 },
-  tileCountOn: { color: theme.ink },
+  personOn: { borderColor: theme.gold, backgroundColor: 'rgba(180, 83, 26, 0.06)' },
+  personCopy: { maxWidth: 120 },
+  personName: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
+  personNameOn: { color: theme.gold },
+  personCount: { color: theme.paperDim, fontFamily: font.medium, fontSize: 12 },
   list: { marginTop: 28 },
   none: { paddingVertical: 32, alignItems: 'center' },
   noneTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },

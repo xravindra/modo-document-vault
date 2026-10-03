@@ -28,6 +28,7 @@ export function LockScreen() {
   const [failures, setFailures] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [restoring, setRestoring] = useState(false);
   const [pending, setPending] = useState<Uint8Array | null>(null);
   const [summary, setSummary] = useState<{ sealedFiles: number; exportedAt: number } | null>(null);
   const shake = useSharedValue(0);
@@ -126,6 +127,7 @@ export function LockScreen() {
       await vault.importBackup(pending);
       setPending(null);
       setSummary(null);
+      setRestoring(false);
       setStep('enter');
       setFirst('');
       setPin('');
@@ -137,9 +139,24 @@ export function LockScreen() {
     }
   }
 
+  function openRestore() {
+    if (busy) return;
+    vault.clearError();
+    setMessage(null);
+    setRestoring(true);
+  }
+
+  function chooseAnother() {
+    setPending(null);
+    setSummary(null);
+    setMessage(null);
+  }
+
   function cancelRestore() {
     setPending(null);
     setSummary(null);
+    setMessage(null);
+    setRestoring(false);
   }
 
   async function biometric(automatic = false) {
@@ -160,13 +177,15 @@ export function LockScreen() {
 
   const prompted = useRef(false);
   useEffect(() => {
-    if (prompted.current || pending || paused || !vault.hasVault || !vault.biometricsReady) return;
+    if (prompted.current || restoring || paused || !vault.hasVault || !vault.biometricsReady) return;
     prompted.current = true;
     void biometric(true);
-  }, [pending, paused, vault.hasVault, vault.biometricsReady]);
+  }, [restoring, paused, vault.hasVault, vault.biometricsReady]);
 
   const title = pending
     ? 'Restore a backup'
+    : restoring
+      ? 'Restore from a backup'
     : !vault.hasVault
       ? step === 'confirm'
         ? 'Confirm the PIN'
@@ -174,7 +193,11 @@ export function LockScreen() {
       : 'Welcome back';
   const subtitle = pending
     ? 'This writes the backup into private storage on this device. The PIN from the phone that made it still opens the vault.'
-    : !vault.hasVault
+    : restoring
+      ? vault.hasVault
+        ? 'Pick a MODO backup file. It replaces the vault on this phone.'
+        : 'Pick the MODO backup file you exported from your other phone.'
+      : !vault.hasVault
       ? 'Four digits. They stay on this phone, and so do your files.'
       : 'Enter your PIN.';
 
@@ -200,8 +223,21 @@ export function LockScreen() {
             >
               <Text style={styles.restoreButtonText}>{vault.hasVault ? 'Replace this device' : 'Restore on this device'}</Text>
             </PressableScale>
-            <PressableScale accessibilityLabel="Cancel restore" disabled={!!busy} onPress={cancelRestore} style={styles.bio}>
-              <Text style={styles.bioText}>Cancel</Text>
+            <PressableScale accessibilityLabel="Choose another file" disabled={!!busy} onPress={chooseAnother} style={styles.bio}>
+              <Text style={styles.bioText}>Choose another file</Text>
+            </PressableScale>
+          </View>
+        ) : restoring ? (
+          <View style={styles.restore}>
+            <PressableScale accessibilityLabel="Upload a backup file" disabled={!!busy} onPress={() => void chooseBackup()} style={styles.upload}>
+              <View style={styles.uploadIcon}>
+                <Icon color={theme.gold} name="upload" size={28} />
+              </View>
+              <Text style={styles.uploadTitle}>Upload backup file</Text>
+              <Text style={styles.uploadMeta}>The modo-vault-….json file from Settings › Export a backup</Text>
+            </PressableScale>
+            <PressableScale accessibilityLabel="Back to PIN" disabled={!!busy} onPress={cancelRestore} style={styles.bio}>
+              <Text style={styles.bioText}>Back to PIN</Text>
             </PressableScale>
           </View>
         ) : (
@@ -216,7 +252,7 @@ export function LockScreen() {
               onComplete={(next) => void submit(next)}
               sideAction={{
                 label: vault.hasVault ? 'Replace from a backup' : 'Restore a backup',
-                onPress: () => void chooseBackup(),
+                onPress: openRestore,
               }}
             />
             {vault.hasVault && vault.biometricsReady ? (
@@ -231,7 +267,7 @@ export function LockScreen() {
             ) : null}
           </>
         )}
-        {pending ? <Banner message={message || vault.error} /> : null}
+        {restoring ? <Banner message={message || vault.error} /> : null}
         <Text style={styles.footer}>Private to this phone</Text>
       </View>
     </View>
@@ -307,6 +343,27 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   restoreButtonText: { color: theme.ink, fontFamily: font.semibold, fontSize: 15 },
+  upload: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(180, 83, 26, 0.45)',
+    backgroundColor: 'rgba(180, 83, 26, 0.06)',
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+  },
+  uploadIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(180, 83, 26, 0.12)',
+  },
+  uploadTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 17, marginTop: 12 },
+  uploadMeta: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, marginTop: 4, textAlign: 'center' },
   footer: {
     color: theme.paperFaint,
     fontFamily: font.medium,
