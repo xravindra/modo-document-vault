@@ -12,9 +12,10 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: theme.ink },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Documents' }} />
-      <Tabs.Screen name="library" options={{ href: null }} />
-      <Tabs.Screen name="activity" options={{ href: null }} />
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="library" options={{ title: 'Family' }} />
+      <Tabs.Screen name="activity" options={{ title: 'Activity' }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
       <Tabs.Screen name="security" options={{ href: null }} />
     </Tabs>
   );

@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router, type Href } from 'expo-router';
 
-import { Headline, Kicker, PressableScale, Quiet, Screen, usePrefersReducedMotion } from '@/components/ui';
+import { BackButton, Headline, Kicker, PressableScale, Quiet, Screen, usePrefersReducedMotion } from '@/components/ui';
 import { KDF_ITERATIONS } from '@/lib/seal';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -56,6 +56,7 @@ export default function SecurityScreen() {
 
   return (
     <Screen>
+      <BackButton href={'/settings' as Href} label="Settings" />
       <Kicker>Security</Kicker>
       <Headline>How the vault holds</Headline>
       <Quiet>These are the controls actually running in this app, not a checklist of intentions.</Quiet>

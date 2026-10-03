@@ -145,9 +145,9 @@ function FigureFrame({ selected, size, children }: { selected: boolean; size: nu
           width: size,
           height: size,
           borderRadius: size / 2,
-          borderWidth: selected ? 2 : 0,
-          borderColor: theme.gold,
-          backgroundColor: selected ? 'rgba(232, 161, 90, 0.16)' : theme.inkRaised,
+          borderWidth: selected ? 2 : 1,
+          borderColor: selected ? theme.gold : theme.line,
+          backgroundColor: selected ? 'rgba(180, 83, 26, 0.12)' : theme.inkRaised,
         },
       ]}
     >
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  mark: { color: theme.ink, fontFamily: font.semibold, textAlign: 'center' },
+  mark: { color: theme.paper, fontFamily: font.semibold, textAlign: 'center' },
   emoji: { textAlign: 'center' },
   add: { backgroundColor: theme.inkSoft, borderColor: theme.gold },
   plus: { position: 'absolute' },

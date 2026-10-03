@@ -4,130 +4,260 @@ import { router, type Href } from 'expo-router';
 
 import { EveryoneFigure, PersonFigure } from '@/components/Avatar';
 import { DocumentStack } from '@/components/DocumentStack';
-import { PressableScale, Screen } from '@/components/ui';
+import { Icon, type IconName } from '@/components/Icon';
+import { IconButton, PressableScale, Screen, SectionTitle } from '@/components/ui';
+import { categoryMark } from '@/lib/emoji';
 import { compareMembers, documentMember } from '@/lib/members';
-import { kindLabel } from '@/lib/types';
+import { documentPages } from '@/lib/pages';
+import { groupByKind, kindLabel } from '@/lib/types';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
+
+function greeting(now = new Date()) {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function HomeScreen() {
   const vault = useVault();
   const [query, setQuery] = useState('');
   const [person, setPerson] = useState('all');
+  const [kind, setKind] = useState('all');
   const count = vault.documents.length;
+  const needle = query.trim().toLowerCase();
+
   const people = useMemo(() => {
     const names = new Set(vault.documents.map((doc) => documentMember(doc)));
     return [...names].sort(compareMembers);
   }, [vault.documents]);
+
+  const scoped = useMemo(
+    () => vault.documents.filter((doc) => person === 'all' || documentMember(doc) === person),
+    [person, vault.documents],
+  );
+
+  const categories = useMemo(() => groupByKind(scoped, vault.categories), [scoped, vault.categories]);
+
   const documents = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return [...vault.documents]
+    return [...scoped]
       .filter((doc) => {
-        if (person !== 'all' && documentMember(doc) !== person) return false;
+        if (kind !== 'all' && doc.kind !== kind) return false;
         if (!needle) return true;
-        return [doc.title, doc.fileName, documentMember(doc), kindLabel(doc.kind)].join(' ').toLowerCase().includes(needle);
+        return [
+          doc.title,
+          doc.fileName,
+          documentMember(doc),
+          kindLabel(doc.kind),
+          doc.extraction.text,
+          ...doc.extraction.fields.map((field) => `${field.label} ${field.value}`),
+          ...documentPages(doc).map((page) => page.extraction?.text ?? ''),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(needle);
       })
       .sort((left, right) => right.createdAt - left.createdAt);
-  }, [person, query, vault.documents]);
-  const favourites = documents.filter((doc) => doc.favourite);
+  }, [kind, needle, scoped]);
+
+  const filtered = person !== 'all' || kind !== 'all';
+  const favourites = !needle && !filtered ? documents.filter((doc) => doc.favourite) : [];
+  const listName = needle
+    ? `Results for “${query.trim()}”`
+    : kind !== 'all'
+      ? kindLabel(kind)
+      : person !== 'all'
+        ? `${person}’s documents`
+        : 'Recent';
 
   return (
     <Screen>
       <View style={styles.top}>
         <View style={styles.heading}>
-          <Text style={styles.brand}>MODO</Text>
-          <Text style={styles.title}>Documents</Text>
-          <Text style={styles.count}>{count === 0 ? 'Nothing saved yet' : `${count} on this phone`}</Text>
+          <Text style={styles.hello}>{greeting()}</Text>
+          <Text style={styles.title}>Your vault</Text>
         </View>
-        <PressableScale accessibilityLabel="Lock vault" onPress={() => void vault.lock()} style={styles.lock}>
-          <Text style={styles.lockText}>Lock</Text>
-        </PressableScale>
+        <IconButton label="Lock vault" name="lock" onPress={() => void vault.lock()} />
       </View>
-      <TextInput
-        accessibilityLabel="Search documents"
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={setQuery}
-        placeholder="Search names or files"
-        placeholderTextColor={theme.paperFaint}
-        style={styles.search}
-        value={query}
-      />
-      {people.length > 0 ? (
-        <ScrollView horizontal contentContainerStyle={styles.filters} showsHorizontalScrollIndicator={false}>
-          <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.person}>
-            <EveryoneFigure selected={person === 'all'} />
-            <Text numberOfLines={1} style={[styles.nameText, person === 'all' ? styles.nameOn : null]}>
-              All
-            </Text>
+
+      <View style={styles.searchBox}>
+        <Icon color={theme.paperFaint} name="search" size={20} />
+        <TextInput
+          accessibilityLabel="Search documents"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setQuery}
+          placeholder="Search names, numbers, or text"
+          placeholderTextColor={theme.paperFaint}
+          returnKeyType="search"
+          style={styles.search}
+          value={query}
+        />
+        {query ? (
+          <PressableScale accessibilityLabel="Clear search" onPress={() => setQuery('')} style={styles.clear}>
+            <Icon color={theme.paperDim} name="close" size={18} />
           </PressableScale>
-          {people.map((name) => (
-            <PressableScale key={name} accessibilityLabel={name} onPress={() => setPerson(name)} style={styles.person}>
-              <PersonFigure name={name} selected={person === name} />
-              <Text numberOfLines={1} style={[styles.nameText, person === name ? styles.nameOn : null]}>
-                {name}
-              </Text>
-            </PressableScale>
-          ))}
-        </ScrollView>
-      ) : null}
-      {documents.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>{count === 0 ? 'Your vault is empty' : 'No matches'}</Text>
-          <Text style={styles.emptyBody}>
-            {count === 0 ? 'Add a file with the button below. It stays on this phone.' : 'Try a different name.'}
-          </Text>
-          {count === 0 ? (
-            <PressableScale accessibilityLabel="Try the sample passport" onPress={() => router.push('/add?sample=1' as Href)}>
-              <Text style={styles.sample}>Try a sample passport</Text>
-            </PressableScale>
-          ) : null}
+        ) : null}
+      </View>
+
+      {count === 0 ? (
+        <View style={styles.welcome}>
+          <Text style={styles.welcomeTitle}>Keep every family document in one safe place</Text>
+          <Text style={styles.welcomeBody}>Scan a card, pick a photo, or choose a PDF. Files are encrypted and never leave this phone.</Text>
+          <View style={styles.starts}>
+            <Start icon="camera" label="Scan" onPress={() => router.push('/add?source=camera' as Href)} />
+            <Start icon="image" label="Photo" onPress={() => router.push('/add?source=photos' as Href)} />
+            <Start icon="file" label="File" onPress={() => router.push('/add?source=files' as Href)} />
+          </View>
+          <PressableScale accessibilityLabel="Try the sample passport" onPress={() => router.push('/add?sample=1' as Href)} style={styles.sampleHit}>
+            <Text style={styles.sample}>Or try a sample passport</Text>
+          </PressableScale>
         </View>
       ) : (
-        <View style={styles.list}>
-          {favourites.length > 0 && person === 'all' ? <DocumentStack documents={favourites} heart name="Favourites" /> : null}
-          <DocumentStack documents={documents} name={person === 'all' ? 'All' : person} />
-        </View>
+        <>
+          {!needle && people.length > 0 ? (
+            <>
+              <SectionTitle action={{ label: 'See all', onPress: () => router.push('/library' as Href) }}>Family</SectionTitle>
+              <ScrollView horizontal contentContainerStyle={styles.people} showsHorizontalScrollIndicator={false}>
+                <PressableScale accessibilityLabel="Everyone" onPress={() => setPerson('all')} style={styles.person}>
+                  <EveryoneFigure selected={person === 'all'} />
+                  <Text numberOfLines={1} style={[styles.personName, person === 'all' ? styles.personOn : null]}>
+                    Everyone
+                  </Text>
+                </PressableScale>
+                {people.map((name) => (
+                  <PressableScale
+                    key={name}
+                    accessibilityLabel={`Show ${name}`}
+                    onPress={() => setPerson((current) => (current === name ? 'all' : name))}
+                    style={styles.person}
+                  >
+                    <PersonFigure name={name} selected={person === name} />
+                    <Text numberOfLines={1} style={[styles.personName, person === name ? styles.personOn : null]}>
+                      {name}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
+
+          {!needle && categories.length > 0 ? (
+            <>
+              <SectionTitle action={kind !== 'all' ? { label: 'Show all', onPress: () => setKind('all') } : undefined}>
+                Categories
+              </SectionTitle>
+              <View style={styles.tiles}>
+                {categories.map((group) => {
+                  const on = kind === group.kind;
+                  return (
+                    <PressableScale
+                      key={group.kind}
+                      accessibilityLabel={`${group.label}, ${group.documents.length}`}
+                      onPress={() => setKind(on ? 'all' : group.kind)}
+                      style={[styles.tile, on ? styles.tileOn : null]}
+                    >
+                      <Text style={styles.tileMark}>{categoryMark(group.kind, vault.categoryEmoji)}</Text>
+                      <Text numberOfLines={1} style={[styles.tileLabel, on ? styles.tileLabelOn : null]}>
+                        {group.label}
+                      </Text>
+                      <Text style={[styles.tileCount, on ? styles.tileCountOn : null]}>{group.documents.length}</Text>
+                    </PressableScale>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <View style={styles.list}>
+            {favourites.length > 0 ? <DocumentStack documents={favourites} heart name="Favourites" /> : null}
+            {documents.length > 0 ? (
+              <DocumentStack documents={documents} name={listName} />
+            ) : (
+              <View style={styles.none}>
+                <Text style={styles.noneTitle}>Nothing found</Text>
+                <Text style={styles.noneBody}>Try another word, or clear the filters.</Text>
+              </View>
+            )}
+          </View>
+        </>
       )}
     </Screen>
   );
 }
 
+function Start({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <PressableScale accessibilityLabel={label} onPress={onPress} style={styles.start}>
+      <View style={styles.startIcon}>
+        <Icon color={theme.gold} name={icon} size={26} />
+      </View>
+      <Text style={styles.startLabel}>{label}</Text>
+    </PressableScale>
+  );
+}
+
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   heading: { flex: 1, minWidth: 0 },
-  brand: { color: theme.gold, fontFamily: font.semibold, fontSize: 12, letterSpacing: 1.2 },
-  lock: {
-    marginTop: 8,
-    minWidth: 64,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+  hello: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15 },
+  title: { color: theme.paper, fontFamily: font.display, fontSize: 32, lineHeight: 38, marginTop: 2 },
+  searchBox: {
+    marginTop: 20,
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.line,
     backgroundColor: theme.inkRaised,
-    alignItems: 'center',
+    paddingLeft: 14,
+    paddingRight: 6,
   },
-  lockText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
-  title: { color: theme.paper, fontFamily: font.display, fontSize: 36, lineHeight: 40, marginTop: 6 },
-  count: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, marginTop: 6 },
-  search: {
-    marginTop: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.line,
-    color: theme.paper,
-    fontFamily: font.body,
-    fontSize: 16,
-    paddingHorizontal: 0,
-    paddingVertical: 12,
-  },
-  filters: { flexDirection: 'row', gap: 14, paddingTop: 18, paddingRight: 8 },
+  search: { flex: 1, minWidth: 0, color: theme.paper, fontFamily: font.body, fontSize: 16, paddingVertical: 14 },
+  clear: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  people: { flexDirection: 'row', gap: 12, paddingRight: 8 },
   person: { width: 72, alignItems: 'center', gap: 6 },
-  nameText: { color: theme.paperDim, fontFamily: font.medium, fontSize: 12, textAlign: 'center', maxWidth: 72 },
-  nameOn: { color: theme.gold },
-  list: { marginTop: 26 },
-  empty: { marginTop: 48 },
-  emptyTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28 },
-  emptyBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 16, lineHeight: 24, marginTop: 8 },
-  sample: { color: theme.paper, fontFamily: font.semibold, fontSize: 16, marginTop: 20 },
+  personName: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13, textAlign: 'center', maxWidth: 72 },
+  personOn: { color: theme.gold, fontFamily: font.semibold },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tile: {
+    width: '31%',
+    flexGrow: 1,
+    minHeight: 96,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  tileOn: { backgroundColor: theme.gold, borderColor: theme.gold },
+  tileMark: { fontSize: 24 },
+  tileLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 14, marginTop: 8 },
+  tileLabelOn: { color: theme.ink },
+  tileCount: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13 },
+  tileCountOn: { color: theme.ink },
+  list: { marginTop: 28 },
+  none: { paddingVertical: 32, alignItems: 'center' },
+  noneTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
+  noneBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, marginTop: 6 },
+  welcome: { marginTop: 28, borderRadius: 24, backgroundColor: theme.inkRaised, borderWidth: 1, borderColor: theme.line, padding: 20 },
+  welcomeTitle: { color: theme.paper, fontFamily: font.display, fontSize: 24, lineHeight: 30 },
+  welcomeBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 8 },
+  starts: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  start: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 16, borderRadius: 18, backgroundColor: theme.ink },
+  startIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+  },
+  startLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  sampleHit: { alignSelf: 'center', marginTop: 16, minHeight: 44, justifyContent: 'center' },
+  sample: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
 });

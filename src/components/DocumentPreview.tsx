@@ -11,7 +11,17 @@ import { font, theme } from '@/theme';
 
 const A4 = 297 / 210;
 
-export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?: (width: number) => void }) {
+export function DocumentPreview({
+  doc,
+  onWidth,
+  faceHeight,
+  maxWidth,
+}: {
+  doc: VaultDocument;
+  onWidth?: (width: number) => void;
+  faceHeight?: number;
+  maxWidth?: number;
+}) {
   const { height: screenHeight } = useWindowDimensions();
   const revoke = useRef<(() => void) | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -74,7 +84,7 @@ export function DocumentPreview({ doc, onWidth }: { doc: VaultDocument; onWidth?
 
   const pdf = mime.includes('pdf') || doc.fileName.toLowerCase().endsWith('.pdf');
   const ratio = pdf && plain ? pdfPageRatio(plain) : imageRatio ?? A4;
-  const face = frameSize(screenHeight, ratio);
+  const face = frameSize(screenHeight, ratio, faceHeight, maxWidth);
   const width = face.width;
   const showPage = (image && preview) || (pdf && preview && plain);
 
@@ -118,7 +128,7 @@ const styles = StyleSheet.create({
   excerpt: {
     width: '100%',
     height: '100%',
-    color: theme.ink,
+    color: theme.paper,
     fontFamily: font.body,
     fontSize: 15,
     lineHeight: 22,

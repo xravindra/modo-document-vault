@@ -14,7 +14,10 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname, type Href } from 'expo-router';
 
+import { Icon, type IconName } from '@/components/Icon';
 import { font, theme } from '@/theme';
+
+export const TAB_PATHS = ['/', '/library', '/activity', '/settings', '/security'];
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -55,7 +58,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const pathname = usePathname();
-  const docked = pathname === '/';
+  const docked = TAB_PATHS.includes(pathname);
   const scrollRef = useRef<ScrollView>(null);
   const contentRef = useRef<View>(null);
   const frame = width > 0 ? { width, maxWidth: width } : { width: '100%' as const, maxWidth: '100%' as const };
@@ -68,7 +71,7 @@ export function Screen({
           width: width > 0 ? Math.min(width, 560) : '100%',
           maxWidth: '100%',
           paddingTop: insets.top + 18,
-          paddingBottom: insets.bottom + (docked ? 124 : 32),
+          paddingBottom: insets.bottom + (docked ? 112 : 32),
         },
       ]}
     >
@@ -149,7 +152,115 @@ export function BackButton({ href, label = 'Back', style }: { href?: Href; label
       onPress={() => (href ? router.replace(href) : goBack())}
       style={[styles.back, style]}
     >
+      <Icon color={theme.paper} name="back" size={20} />
       <Text style={styles.backText}>{label}</Text>
+    </PressableScale>
+  );
+}
+
+export function IconButton({
+  name,
+  label,
+  onPress,
+  tone = 'plain',
+  filled = false,
+  disabled,
+  style,
+}: {
+  name: IconName;
+  label: string;
+  onPress: () => void;
+  tone?: 'plain' | 'accent' | 'danger';
+  filled?: boolean;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const color = tone === 'accent' ? theme.gold : tone === 'danger' ? theme.danger : theme.paper;
+  return (
+    <PressableScale accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.iconButton, style]}>
+      <Icon color={color} filled={filled} name={name} />
+    </PressableScale>
+  );
+}
+
+export function SectionTitle({ children, action }: { children: string; action?: { label: string; onPress: () => void } }) {
+  return (
+    <View style={styles.sectionHead}>
+      <Text style={styles.sectionTitle}>{children}</Text>
+      {action ? (
+        <PressableScale accessibilityLabel={action.label} onPress={action.onPress} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{action.label}</Text>
+        </PressableScale>
+      ) : null}
+    </View>
+  );
+}
+
+export function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <View style={styles.groupWrap}>
+      {title ? <Text style={styles.groupTitle}>{title}</Text> : null}
+      <View style={styles.group}>{children}</View>
+    </View>
+  );
+}
+
+export function ListRow({
+  icon,
+  label,
+  detail,
+  value,
+  onPress,
+  disabled,
+  tone = 'plain',
+  toggle,
+  last = false,
+  accessibilityLabel,
+}: {
+  icon: IconName;
+  label: string;
+  detail?: string;
+  value?: string;
+  onPress: () => void;
+  disabled?: boolean;
+  tone?: 'plain' | 'danger';
+  toggle?: boolean;
+  last?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const danger = tone === 'danger';
+  return (
+    <PressableScale
+      accessibilityLabel={accessibilityLabel ?? label}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.listRow, last ? null : styles.listRowLine]}
+    >
+      <View style={[styles.listIcon, danger ? styles.listIconDanger : null]}>
+        <Icon color={danger ? theme.danger : theme.gold} name={icon} size={20} />
+      </View>
+      <View style={styles.listCopy}>
+        <Text numberOfLines={1} style={[styles.listLabel, danger ? styles.listLabelDanger : null]}>
+          {label}
+        </Text>
+        {detail ? (
+          <Text numberOfLines={2} style={styles.listDetail}>
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+      {value ? (
+        <Text numberOfLines={1} style={styles.listValue}>
+          {value}
+        </Text>
+      ) : null}
+      {toggle === undefined ? (
+        danger ? null : <Icon color={theme.paperFaint} name="chevron" size={18} />
+      ) : (
+        <View style={[styles.switch, toggle ? styles.switchOn : null]}>
+          <View style={[styles.knob, toggle ? styles.knobOn : null]} />
+        </View>
+      )}
     </PressableScale>
   );
 }
@@ -185,20 +296,94 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     aspectRatio: 1,
     borderRadius: 180,
-    backgroundColor: 'rgba(232, 161, 90, 0.1)',
+    backgroundColor: 'rgba(180, 83, 26, 0.14)',
   },
   scroll: { alignItems: 'center', maxWidth: '100%' },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },
   disabled: { opacity: 0.45 },
   back: {
     alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-    marginLeft: -12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingRight: 14,
+    paddingLeft: 6,
+    marginBottom: 12,
+    marginLeft: -8,
     borderRadius: 999,
   },
-  backText: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15 },
+  backText: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.inkRaised,
+    borderWidth: 1,
+    borderColor: theme.line,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  sectionTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
+  sectionAction: { minHeight: 36, justifyContent: 'center', paddingLeft: 12 },
+  sectionActionText: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
+  groupWrap: { marginTop: 24 },
+  groupTitle: {
+    color: theme.paperDim,
+    fontFamily: font.semibold,
+    fontSize: 13,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  group: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    overflow: 'hidden',
+  },
+  listRow: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  listRowLine: { borderBottomWidth: 1, borderBottomColor: theme.line },
+  listIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+  },
+  listIconDanger: { backgroundColor: 'rgba(155, 52, 44, 0.10)' },
+  listCopy: { flex: 1, minWidth: 0 },
+  listLabel: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
+  listLabelDanger: { color: theme.danger },
+  listDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  listValue: { maxWidth: '40%', color: theme.paperDim, fontFamily: font.medium, fontSize: 14 },
+  switch: {
+    width: 46,
+    height: 28,
+    borderRadius: 14,
+    padding: 3,
+    backgroundColor: theme.inkSoft,
+  },
+  switchOn: { backgroundColor: theme.gold },
+  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: theme.sheet },
+  knobOn: { transform: [{ translateX: 18 }] },
   kicker: {
     color: theme.paperFaint,
     fontFamily: font.medium,
@@ -208,8 +393,8 @@ const styles = StyleSheet.create({
   headline: {
     color: theme.paper,
     fontFamily: font.display,
-    fontSize: 40,
-    lineHeight: 46,
+    fontSize: 32,
+    lineHeight: 38,
     marginTop: 4,
     maxWidth: '100%',
   },
@@ -225,8 +410,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(224, 139, 122, 0.45)',
-    backgroundColor: 'rgba(224, 139, 122, 0.12)',
+    borderColor: 'rgba(155, 52, 44, 0.28)',
+    backgroundColor: 'rgba(155, 52, 44, 0.08)',
     padding: 14,
   },
   bannerText: { color: theme.danger, fontFamily: font.medium, fontSize: 14, lineHeight: 20 },

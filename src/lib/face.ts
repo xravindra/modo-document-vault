@@ -7,8 +7,18 @@ export function documentFace(screenHeight: number): number {
 }
 
 /** Height stays the shared face. Width follows the page, height divided by width. */
-export function frameSize(screenHeight: number, heightOverWidth: number): { width: number; height: number } {
-  const height = documentFace(screenHeight);
+export function frameSize(
+  screenHeight: number,
+  heightOverWidth: number,
+  faceHeight?: number,
+  maxWidth?: number,
+): { width: number; height: number } {
+  let height = faceHeight && faceHeight > 0 ? faceHeight : documentFace(screenHeight);
   const ratio = heightOverWidth > 0.2 && heightOverWidth < 6 ? heightOverWidth : A4;
-  return { height, width: Math.max(72, Math.round(height / ratio)) };
+  let width = Math.max(48, Math.round(height / ratio));
+  if (maxWidth && width > maxWidth) {
+    width = maxWidth;
+    height = Math.max(48, Math.round(width * ratio));
+  }
+  return { height, width };
 }

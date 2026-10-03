@@ -3,6 +3,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/Icon';
 import { PinDots, PinPad } from '@/components/PinPad';
 import { Banner, PressableScale } from '@/components/ui';
 import { VaultMark } from '@/components/VaultMark';
@@ -222,12 +223,10 @@ export function LockScreen() {
               <PressableScale
                 accessibilityLabel={vault.hasFingerprint ? 'Unlock with fingerprint' : 'Unlock with biometrics'}
                 onPress={() => void biometric()}
-                style={styles.bio}
+                style={[styles.bio, styles.bioPill]}
               >
-                <Text>
-                  {vault.hasFingerprint ? <Text style={styles.bioEmoji}>🫆 </Text> : null}
-                  <Text style={styles.bioText}>{vault.hasFingerprint ? 'Fingerprint' : 'Use biometrics'}</Text>
-                </Text>
+                <Icon color={theme.gold} name="key" size={20} />
+                <Text style={styles.bioText}>{vault.hasFingerprint ? 'Use fingerprint' : 'Use biometrics'}</Text>
               </PressableScale>
             ) : null}
           </>
@@ -256,7 +255,7 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     aspectRatio: 1,
     borderRadius: 230,
-    backgroundColor: 'rgba(232, 161, 90, 0.12)',
+    backgroundColor: 'rgba(180, 83, 26, 0.16)',
   },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {
@@ -283,7 +282,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   bio: { marginTop: 14, alignItems: 'center', padding: 12 },
-  bioEmoji: { fontSize: 18 },
+  bioPill: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 48,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+  },
   bioText: { color: theme.paper, fontFamily: font.medium, fontSize: 15 },
   restore: { marginTop: 18, alignItems: 'center' },
   restoreTitle: { color: theme.paper, fontFamily: font.displaySoft, fontSize: 28, textAlign: 'center' },

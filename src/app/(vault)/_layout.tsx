@@ -18,7 +18,6 @@ export default function VaultLayout() {
     >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="add" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="settings" />
       <Stack.Screen name="document/[id]" options={{ animation: 'fade_from_bottom' }} />
     </Stack>
   );

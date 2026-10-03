@@ -5,8 +5,9 @@
     "scheme": "modo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#101614",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F6F1E8",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.modo.documentvault",
@@ -20,7 +21,9 @@
     "android": {
       "package": "com.modo.documentvault",
       "adaptiveIcon": {
-        "backgroundColor": "#101614"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon-mono.png",
+        "backgroundColor": "#F6F1E8"
       },
       "permissions": [
         "android.permission.USE_BIOMETRIC",
@@ -33,7 +36,7 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "backgroundColor": "#101614"
+      "backgroundColor": "#F6F1E8"
     },
     "plugins": [
       "expo-router",

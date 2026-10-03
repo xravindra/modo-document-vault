@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     borderWidth: 1,
-    borderColor: 'rgba(230, 196, 138, 0.35)',
+    borderColor: 'rgba(180, 83, 26, 0.28)',
   },
   notch: {
     position: 'absolute',

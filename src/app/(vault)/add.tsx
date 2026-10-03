@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 
 import { KindPicker } from '@/components/KindPicker';
 import { MemberPicker } from '@/components/MemberPicker';
-import { BackButton, Banner, Headline, PressableScale, Quiet, Screen } from '@/components/ui';
+import { Icon, type IconName } from '@/components/Icon';
+import { Banner, IconButton, PressableScale, Quiet, Screen, goBack } from '@/components/ui';
 import { canonicalMember, SELF } from '@/lib/members';
 import { smartDocumentName } from '@/lib/naming';
 import { VaultMark } from '@/components/VaultMark';
@@ -14,6 +15,7 @@ import { extractDocument, suggestedKind } from '@/lib/extract';
 import { MAX_PAGES } from '@/lib/pages';
 import { readSource } from '@/lib/readSource';
 import { buildSamplePassportPdf } from '@/lib/samplePdf';
+import { kindLabel } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -36,7 +38,7 @@ function paint() {
 
 export default function AddScreen() {
   const vault = useVault();
-  const params = useLocalSearchParams<{ sample?: string }>();
+  const params = useLocalSearchParams<{ sample?: string; source?: string }>();
   const [phase, setPhase] = useState<'choose' | 'reading'>('choose');
   const [member, setMember] = useState(SELF);
   const [kind, setKind] = useState<string | null>(null);
@@ -91,6 +93,15 @@ export default function AddScreen() {
     sampleRef.current = true;
     setMessage('The sample passport is filed under Self unless you choose someone else.');
   }, [params.sample]);
+
+  const sourceRef = useRef(false);
+  useEffect(() => {
+    if (sourceRef.current || Platform.OS === 'web' || !params.source) return;
+    sourceRef.current = true;
+    if (params.source === 'camera') void pickImage(true);
+    else if (params.source === 'photos') void pickImage(false);
+    else if (params.source === 'files') void pickDocument();
+  }, [params.source]);
 
   function chosenMember() {
     return canonicalMember([], member) || SELF;
@@ -192,43 +203,58 @@ export default function AddScreen() {
     }
   }
 
+  const forName = chosenMember();
+
   return (
     <Screen>
-      <BackButton label="Back" />
-      <Headline>Add</Headline>
-      <Quiet>Pick a file. It stays on this phone, under Self, unless you choose someone else.</Quiet>
+      <View style={styles.top}>
+        <Text style={styles.title}>Add a document</Text>
+        <IconButton label="Close" name="close" onPress={() => goBack()} />
+      </View>
+      <Quiet>Encrypted the moment it is saved. Nothing leaves this phone.</Quiet>
       <Banner message={message} />
 
       {phase === 'choose' ? (
-        <View style={styles.stack}>
-          <Choice primary label="Choose a file" detail="PDF, photo, or text" onPress={() => void pickDocument()} />
-          <Choice label="Choose a photo" detail="From this phone" onPress={() => void pickImage(false)} />
-          <Choice label="Take a photo" detail="Uses the camera once" onPress={() => void pickImage(true)} />
-          <PressableScale accessibilityLabel="Person and category" onPress={() => setDetailsOpen((open) => !open)} style={styles.detailsToggle}>
-            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Hide details' : 'Person and category'}</Text>
-          </PressableScale>
-          {detailsOpen ? (
-            <View style={styles.details}>
-              <MemberPicker
-                members={vault.members}
-                onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
-                onSelect={(name) => {
-                  setMember(name);
-                  setMessage(null);
-                }}
-                selected={member}
-              />
+        <View>
+          <Step number={1} title={`For ${forName}`}>
+            <MemberPicker
+              members={vault.members}
+              onRemoved={(name) => setMessage(`${name} was removed. Their documents are filed under Self.`)}
+              onSelect={(name) => {
+                setMember(name);
+                setMessage(null);
+              }}
+              selected={member}
+            />
+          </Step>
+
+          <Step number={2} title="Category">
+            <PressableScale accessibilityLabel="Choose a category" onPress={() => setDetailsOpen((open) => !open)} style={styles.kindRow}>
+              <Text style={styles.kindValue}>{kind ? kindLabel(kind) : 'Detect automatically'}</Text>
+              <Text style={styles.kindChange}>{detailsOpen ? 'Done' : 'Change'}</Text>
+            </PressableScale>
+            {detailsOpen ? (
               <KindPicker
                 categories={vault.categories}
                 onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
                 onSelect={(next) => {
                   setKind(next);
                   setMessage(null);
+                  setDetailsOpen(false);
                 }}
                 selected={kind}
               />
+            ) : null}
+          </Step>
+
+          <Step number={3} title="Add from">
+            <View style={styles.sources}>
+              <Source icon="camera" label="Camera" detail="Snap it now" onPress={() => void pickImage(true)} primary />
+              <Source icon="image" label="Photos" detail="Up to 8" onPress={() => void pickImage(false)} />
+              <Source icon="file" label="Files" detail="PDF or text" onPress={() => void pickDocument()} />
             </View>
-          ) : null}
+          </Step>
+
           <PressableScale
             accessibilityLabel="Try the sample passport"
             onPress={() => {
@@ -242,8 +268,9 @@ export default function AddScreen() {
                 extraPages: [],
               });
             }}
+            style={styles.sampleHit}
           >
-            <Text style={styles.sample}>Try a sample passport</Text>
+            <Text style={styles.sample}>No document handy? Try a sample passport</Text>
           </PressableScale>
         </View>
       ) : null}
@@ -252,47 +279,112 @@ export default function AddScreen() {
         <View style={styles.reading}>
           <VaultMark compact />
           <Text style={styles.readingText}>{readingLabel}</Text>
+          <Text style={styles.readingHint}>Keep the app open for a moment.</Text>
         </View>
       ) : null}
     </Screen>
   );
 }
 
-function Choice({ label, detail, onPress, primary = false }: { label: string; detail: string; onPress: () => void; primary?: boolean }) {
+function Step({ number, title, children }: { number: number; title: string; children: ReactNode }) {
   return (
-    <PressableScale accessibilityLabel={label} onPress={onPress} style={[styles.choice, primary ? styles.choicePrimary : null]}>
-      <View style={styles.choiceCopy}>
-        <Text style={[styles.choiceLabel, primary ? styles.choiceLabelPrimary : null]}>{label}</Text>
-        <Text style={[styles.choiceDetail, primary ? styles.choiceDetailPrimary : null]}>{detail}</Text>
+    <View style={styles.step}>
+      <View style={styles.stepHead}>
+        <View style={styles.stepBadge}>
+          <Text style={styles.stepNumber}>{number}</Text>
+        </View>
+        <Text numberOfLines={1} style={styles.stepTitle}>
+          {title}
+        </Text>
       </View>
-      <Text style={[styles.choiceGo, primary ? styles.choiceGoPrimary : null]}>›</Text>
+      {children}
+    </View>
+  );
+}
+
+function Source({
+  icon,
+  label,
+  detail,
+  onPress,
+  primary = false,
+}: {
+  icon: IconName;
+  label: string;
+  detail: string;
+  onPress: () => void;
+  primary?: boolean;
+}) {
+  return (
+    <PressableScale accessibilityLabel={label} onPress={onPress} style={[styles.source, primary ? styles.sourcePrimary : null]}>
+      <View style={[styles.sourceIcon, primary ? styles.sourceIconPrimary : null]}>
+        <Icon color={primary ? theme.ink : theme.gold} name={icon} size={28} />
+      </View>
+      <Text style={[styles.sourceLabel, primary ? styles.sourceLabelPrimary : null]}>{label}</Text>
+      <Text style={[styles.sourceDetail, primary ? styles.sourceDetailPrimary : null]}>{detail}</Text>
     </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { marginTop: 22, gap: 10 },
-  choice: {
-    borderRadius: 24,
-    backgroundColor: theme.inkRaised,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  title: { flex: 1, color: theme.paper, fontFamily: font.display, fontSize: 30, lineHeight: 36 },
+  step: { marginTop: 26 },
+  stepHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.paper,
+  },
+  stepNumber: { color: theme.ink, fontFamily: font.semibold, fontSize: 13 },
+  stepTitle: { flex: 1, color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
+  kindRow: {
+    marginTop: 12,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    paddingHorizontal: 16,
   },
-  choicePrimary: { backgroundColor: theme.paper },
-  choiceCopy: { flex: 1, minWidth: 0 },
-  choiceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 17 },
-  choiceLabelPrimary: { color: theme.ink },
-  choiceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 4 },
-  choiceDetailPrimary: { color: 'rgba(16, 18, 24, 0.62)' },
-  choiceGo: { color: theme.paperFaint, fontSize: 28, lineHeight: 30 },
-  choiceGoPrimary: { color: theme.ink },
-  reading: { alignItems: 'center', marginTop: 36 },
-  readingText: { color: theme.paper, fontFamily: font.medium, fontSize: 16, marginTop: 8 },
-  detailsToggle: { paddingVertical: 10 },
-  detailsToggleText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
-  details: { gap: 12 },
-  sample: { color: theme.paperDim, fontFamily: font.medium, fontSize: 15, marginTop: 8 },
+  kindValue: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
+  kindChange: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
+  sources: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  source: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 18,
+    paddingHorizontal: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+  },
+  sourcePrimary: { backgroundColor: theme.gold, borderColor: theme.gold },
+  sourceIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    marginBottom: 4,
+  },
+  sourceIconPrimary: { backgroundColor: 'rgba(255, 255, 255, 0.22)' },
+  sourceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
+  sourceLabelPrimary: { color: theme.ink },
+  sourceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 12, textAlign: 'center' },
+  sourceDetailPrimary: { color: 'rgba(246, 241, 232, 0.85)' },
+  reading: { alignItems: 'center', marginTop: 48 },
+  readingText: { color: theme.paper, fontFamily: font.semibold, fontSize: 18, marginTop: 8 },
+  readingHint: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 6 },
+  sampleHit: { alignSelf: 'center', marginTop: 24, minHeight: 44, justifyContent: 'center' },
+  sample: { color: theme.gold, fontFamily: font.semibold, fontSize: 15, textAlign: 'center' },
 });

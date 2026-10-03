@@ -6,6 +6,7 @@ import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/R
 import { ActionIcon } from '@/components/ActionIcon';
 import { MemberAvatar } from '@/components/Avatar';
 import { DocumentPreview } from '@/components/DocumentPreview';
+import { Icon } from '@/components/Icon';
 import { PressableScale } from '@/components/ui';
 import { deliverFile, shareDocument } from '@/lib/deliver';
 import { formatBytes, formatWhen } from '@/lib/format';
@@ -18,11 +19,13 @@ function Card({
   doc,
   swipe = false,
   showFile = false,
+  shelf = false,
   carousel = false,
 }: {
   doc: VaultDocument;
   swipe?: boolean;
   showFile?: boolean;
+  shelf?: boolean;
   carousel?: boolean;
 }) {
   const vault = useVault();
@@ -59,6 +62,38 @@ function Card({
       acting.current = false;
       vault.releaseAutoLock();
     }
+  }
+
+  if (shelf) {
+    return (
+      <View style={styles.shelf}>
+        <PressableScale accessibilityLabel={`Open ${doc.title}`} onPress={() => router.push(`/document/${doc.id}` as Href)} style={styles.shelfOpen}>
+          <View style={styles.thumb}>
+            <DocumentPreview doc={doc} faceHeight={84} maxWidth={64} />
+          </View>
+          <View style={styles.copy}>
+            <Text numberOfLines={2} style={styles.title}>
+              {doc.title}
+            </Text>
+            <Text numberOfLines={1} style={styles.meta}>
+              {note ?? `${documentMember(doc)} · ${kindLabel(doc.kind)}`}
+            </Text>
+            {note ? null : (
+              <Text numberOfLines={1} style={styles.when}>
+                {formatWhen(doc.createdAt)} · {formatBytes(doc.byteLength)}
+              </Text>
+            )}
+          </View>
+        </PressableScale>
+        <PressableScale
+          accessibilityLabel={doc.favourite ? `Remove ${doc.title} from favourites` : `Mark ${doc.title} as a favourite`}
+          onPress={() => void vault.toggleFavourite(doc.id)}
+          style={styles.shelfHeart}
+        >
+          <Icon color={doc.favourite ? theme.danger : theme.paperFaint} filled={!!doc.favourite} name="heart" />
+        </PressableScale>
+      </View>
+    );
   }
 
   const body = (
@@ -99,7 +134,7 @@ function Card({
           onPress={() => void vault.toggleFavourite(doc.id)}
           style={styles.heartHit}
         >
-          <Text style={styles.heart}>{doc.favourite ? '❤️' : '🤍'}</Text>
+          <Text style={[styles.heart, doc.favourite ? styles.heartOn : null]}>{doc.favourite ? '♥' : '♡'}</Text>
         </PressableScale>
       )}
     </View>
@@ -175,7 +210,8 @@ const styles = StyleSheet.create({
   when: { color: theme.paperFaint, fontFamily: font.body, fontSize: 13, marginTop: 2 },
   chevron: { color: theme.paperFaint, fontSize: 26, lineHeight: 28, marginLeft: 4 },
   heartHit: { padding: 4 },
-  heart: { fontSize: 20 },
+  heart: { color: theme.paperFaint, fontSize: 22 },
+  heartOn: { color: theme.danger },
   swipeWrap: { width: '100%', maxWidth: '100%', alignSelf: 'stretch' },
   swipe: {
     width: 108,
@@ -189,4 +225,28 @@ const styles = StyleSheet.create({
   swipeShare: { backgroundColor: theme.inkSoft, borderWidth: 1, borderColor: theme.line },
   swipeText: { color: theme.paper, fontFamily: font.semibold, fontSize: 13 },
   swipeTextInk: { color: theme.ink },
+  shelf: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.inkRaised,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: theme.line,
+    padding: 10,
+    gap: 4,
+  },
+  shelfOpen: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  shelfHeart: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  thumb: {
+    width: 64,
+    height: 84,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.sheet,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

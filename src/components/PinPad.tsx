@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.line,
-    backgroundColor: 'transparent',
+    backgroundColor: theme.inkRaised,
   },
   keyText: { color: theme.paper, fontFamily: font.medium, fontSize: 26 },
   mark: { width: 22, height: 22, alignItems: 'center' },

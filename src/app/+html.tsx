@@ -12,7 +12,7 @@ export default function Root({ children }: PropsWithChildren) {
         <style
           dangerouslySetInnerHTML={{
             __html: `
-              html, body, #root { height: 100%; width: 100%; max-width: 100%; overflow-x: hidden; background: #101614; }
+              html, body, #root { height: 100%; width: 100%; max-width: 100%; overflow-x: hidden; background: #F6F1E8; }
               body { margin: 0; }
             `,
           }}

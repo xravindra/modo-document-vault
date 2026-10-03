@@ -34,7 +34,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, width: '100%', maxWidth: '100%', overflow: 'hidden', backgroundColor: theme.ink }}>
       <SafeAreaProvider>
         <VaultProvider>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <OcrHost />
           <RasterHost />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.ink } }} />
