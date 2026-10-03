@@ -5,7 +5,7 @@ import { Icon } from '@/components/Icon';
 import { PressableScale } from '@/components/ui';
 import { TRIAL_DAYS } from '@/lib/plan';
 import { usePlan } from '@/state/PlanContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint, wash } from '@/theme';
 
 export function PlanBanner() {
   const plan = usePlan();
@@ -46,8 +46,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(180, 83, 26, 0.25)',
-    backgroundColor: 'rgba(180, 83, 26, 0.06)',
+    borderColor: tint(0.25),
+    backgroundColor: tint(0.06),
     padding: 14,
   },
   cardEnded: { backgroundColor: theme.paper, borderColor: theme.paper },
@@ -58,17 +58,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.12)',
+    backgroundColor: tint(0.12),
   },
   iconEnded: { backgroundColor: theme.gold },
   copy: { flex: 1, minWidth: 0 },
   title: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
   titleEnded: { color: theme.ink },
   body: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, marginTop: 2 },
-  bodyEnded: { color: 'rgba(246, 241, 232, 0.75)' },
+  bodyEnded: { color: wash(0.75) },
   action: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
   actionEnded: { color: theme.gold },
   track: { flexDirection: 'row', gap: 4, marginTop: 12 },
-  day: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(180, 83, 26, 0.18)' },
+  day: { flex: 1, height: 4, borderRadius: 2, backgroundColor: tint(0.18) },
   dayUsed: { backgroundColor: theme.gold },
 });

@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { DocumentCard } from '@/components/DocumentCard';
+import { DocumentRows } from '@/components/DocumentFeed';
 import { Icon } from '@/components/Icon';
 import type { VaultDocument } from '@/lib/types';
 import { font, theme } from '@/theme';
@@ -25,11 +25,7 @@ export function DocumentStack({
         </Text>
         <Text style={styles.count}>{documents.length}</Text>
       </View>
-      <View style={styles.list}>
-        {documents.map((doc) => (
-          <DocumentCard key={doc.id} doc={doc} shelf />
-        ))}
-      </View>
+      <DocumentRows documents={documents} />
     </View>
   );
 }
@@ -48,5 +44,4 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     overflow: 'hidden',
   },
-  list: { gap: 10 },
 });

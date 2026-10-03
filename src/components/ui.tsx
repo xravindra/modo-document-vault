@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname, type Href } from 'expo-router';
 
 import { Icon, type IconName } from '@/components/Icon';
-import { font, theme } from '@/theme';
+import { dangerTint, font, theme, tint } from '@/theme';
 
 export const TAB_PATHS = ['/', '/library', '/activity', '/settings', '/security'];
 
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     aspectRatio: 1,
     borderRadius: 180,
-    backgroundColor: 'rgba(180, 83, 26, 0.14)',
+    backgroundColor: tint(0.14),
   },
   scroll: { alignItems: 'center', maxWidth: '100%' },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 22, overflow: 'hidden' },
@@ -366,9 +366,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
   },
-  listIconDanger: { backgroundColor: 'rgba(155, 52, 44, 0.10)' },
+  listIconDanger: { backgroundColor: dangerTint(0.10) },
   listCopy: { flex: 1, minWidth: 0 },
   listLabel: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
   listLabelDanger: { color: theme.danger },
@@ -410,8 +410,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(155, 52, 44, 0.28)',
-    backgroundColor: 'rgba(155, 52, 44, 0.08)',
+    borderColor: dangerTint(0.28),
+    backgroundColor: dangerTint(0.08),
     padding: 14,
   },
   bannerText: { color: theme.danger, fontFamily: font.medium, fontSize: 14, lineHeight: 20 },

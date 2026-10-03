@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F6F1E8",
+    "backgroundColor": "#F2F5F7",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.modo.documentvault",
@@ -36,7 +36,7 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "backgroundColor": "#F6F1E8"
+      "backgroundColor": "#F2F5F7"
     },
     "plugins": [
       "expo-router",

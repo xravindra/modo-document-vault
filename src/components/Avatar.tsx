@@ -6,7 +6,7 @@ import { avatarColor, initials } from '@/lib/avatar';
 import { EMOJI_CHOICES, memberMark } from '@/lib/emoji';
 import { memberRole } from '@/lib/members';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 export function Avatar({
   name,
@@ -104,7 +104,7 @@ function GlyphCircle({ glyph, selected, size }: { glyph: Glyph; selected: boolea
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: selected ? theme.gold : 'rgba(180, 83, 26, 0.10)',
+          backgroundColor: selected ? theme.gold : tint(0.10),
         },
       ]}
     >

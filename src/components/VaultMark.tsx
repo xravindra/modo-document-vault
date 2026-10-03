@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { usePrefersReducedMotion } from '@/components/ui';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 function Ring({
   size,
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     borderWidth: 1,
-    borderColor: 'rgba(180, 83, 26, 0.28)',
+    borderColor: tint(0.28),
   },
   notch: {
     position: 'absolute',

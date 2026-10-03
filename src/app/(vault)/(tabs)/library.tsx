@@ -9,7 +9,7 @@ import { PressableScale, Quiet, Screen } from '@/components/ui';
 import { compareMembers, documentMember, sameMember, SELF } from '@/lib/members';
 import { groupByKind } from '@/lib/types';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 export default function FamilyScreen() {
   const vault = useVault();
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: 'rgba(180, 83, 26, 0.45)',
+    borderColor: tint(0.45),
   },
   shelf: { paddingHorizontal: 14, paddingBottom: 16, backgroundColor: theme.ink, borderTopWidth: 1, borderTopColor: theme.line },
   empty: { alignItems: 'flex-start', gap: 14, paddingTop: 16 },

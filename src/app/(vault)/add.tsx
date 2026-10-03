@@ -19,7 +19,7 @@ import { kindLabel } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
 import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint, wash } from '@/theme';
 
 type Draft = {
   bytes: Uint8Array;
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
   },
   endedTitle: { color: theme.paper, fontFamily: font.display, fontSize: 24, marginTop: 14, textAlign: 'center' },
   endedBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 6, textAlign: 'center' },
@@ -416,14 +416,14 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
     marginBottom: 4,
   },
   sourceIconPrimary: { backgroundColor: 'rgba(255, 255, 255, 0.22)' },
   sourceLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
   sourceLabelPrimary: { color: theme.ink },
   sourceDetail: { color: theme.paperDim, fontFamily: font.body, fontSize: 12, textAlign: 'center' },
-  sourceDetailPrimary: { color: 'rgba(246, 241, 232, 0.85)' },
+  sourceDetailPrimary: { color: wash(0.85) },
   reading: { alignItems: 'center', marginTop: 48 },
   readingText: { color: theme.paper, fontFamily: font.semibold, fontSize: 18, marginTop: 8 },
   readingHint: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 6 },

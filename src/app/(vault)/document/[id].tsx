@@ -30,7 +30,7 @@ import type { PageInput } from '@/lib/vault';
 import { session } from '@/lib/vault';
 import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, shade, theme } from '@/theme';
 
 type SheetName = 'edit' | 'collage' | 'lock' | 'member' | 'category' | 'rename';
 
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create({
   dockLabel: { color: theme.paper, fontFamily: font.medium, fontSize: 12 },
   dockLabelPrimary: { color: theme.ink, fontFamily: font.semibold },
   sheetLayer: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(28, 22, 18, 0.28)' },
+  sheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: shade(0.28) },
   sheet: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -1221,7 +1221,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingHorizontal: 16,
   },
-  grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(28, 22, 18, 0.18)', marginBottom: 8 },
+  grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: shade(0.18), marginBottom: 8 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   sheetTitle: { color: theme.paper, fontFamily: font.display, fontSize: 24 },
   sheetLink: { width: 44, height: 44 },

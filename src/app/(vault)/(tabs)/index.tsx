@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 
 import { CategoryIcon, PersonIcon } from '@/components/Avatar';
-import { DocumentStack } from '@/components/DocumentStack';
+import { DocumentFeed, FavouriteStrip, type FeedLayout } from '@/components/DocumentFeed';
 import { Icon, type IconName } from '@/components/Icon';
 import { PlanBanner } from '@/components/PlanBanner';
 import { IconButton, PressableScale, Screen, SectionTitle } from '@/components/ui';
@@ -11,7 +11,7 @@ import { compareMembers, documentMember } from '@/lib/members';
 import { documentPages } from '@/lib/pages';
 import { groupByKind, kindLabel } from '@/lib/types';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 function greeting(now = new Date()) {
   const hour = now.getHours();
@@ -25,6 +25,7 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [person, setPerson] = useState('all');
   const [kind, setKind] = useState('all');
+  const [layout, setLayout] = useState<FeedLayout>('list');
   const count = vault.documents.length;
   const needle = query.trim().toLowerCase();
 
@@ -124,7 +125,7 @@ export default function HomeScreen() {
         <>
           {!needle && people.length > 0 ? (
             <>
-              <SectionTitle action={{ label: 'See all', onPress: () => router.push('/library' as Href) }}>Family</SectionTitle>
+              <SectionTitle>Family</SectionTitle>
               <ScrollView horizontal contentContainerStyle={styles.people} showsHorizontalScrollIndicator={false}>
                 <PersonChip count={count} label="All" on={person === 'all'} onPress={() => setPerson('all')} />
                 {people.map((entry) => (
@@ -143,9 +144,7 @@ export default function HomeScreen() {
 
           {!needle && categories.length > 0 ? (
             <>
-              <SectionTitle action={kind !== 'all' ? { label: 'Show all', onPress: () => setKind('all') } : undefined}>
-                Categories
-              </SectionTitle>
+              <SectionTitle>Categories</SectionTitle>
               <ScrollView horizontal contentContainerStyle={styles.people} showsHorizontalScrollIndicator={false}>
                 {categories.map((group) => {
                   const on = kind === group.kind;
@@ -164,10 +163,34 @@ export default function HomeScreen() {
             </>
           ) : null}
 
+          {favourites.length > 0 ? (
+            <>
+              <SectionTitle>Favourites</SectionTitle>
+              <FavouriteStrip documents={favourites} />
+            </>
+          ) : null}
+
           <View style={styles.list}>
-            {favourites.length > 0 ? <DocumentStack documents={favourites} heart name="Favourites" /> : null}
+            <View style={styles.listHead}>
+              <Text numberOfLines={1} style={styles.listName}>
+                {listName}
+              </Text>
+              <Text style={styles.listCount}>{documents.length}</Text>
+              <View style={styles.toggle}>
+                {(['list', 'grid'] as const).map((mode) => (
+                  <PressableScale
+                    key={mode}
+                    accessibilityLabel={mode === 'list' ? 'Show as list' : 'Show as grid'}
+                    onPress={() => setLayout(mode)}
+                    style={[styles.toggleKey, layout === mode ? styles.toggleKeyOn : null]}
+                  >
+                    <Icon color={layout === mode ? theme.ink : theme.paperDim} name={mode} size={18} />
+                  </PressableScale>
+                ))}
+              </View>
+            </View>
             {documents.length > 0 ? (
-              <DocumentStack documents={documents} name={listName} />
+              <DocumentFeed documents={documents} layout={layout} />
             ) : (
               <View style={styles.none}>
                 <Text style={styles.noneTitle}>Nothing found</Text>
@@ -255,12 +278,27 @@ const styles = StyleSheet.create({
     borderColor: theme.inkRaised,
     backgroundColor: theme.inkRaised,
   },
-  personOn: { borderColor: theme.gold, backgroundColor: 'rgba(180, 83, 26, 0.06)' },
+  personOn: { borderColor: theme.gold, backgroundColor: tint(0.06) },
   personCopy: { maxWidth: 120 },
   personName: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
   personNameOn: { color: theme.gold },
   personCount: { color: theme.paperDim, fontFamily: font.medium, fontSize: 12 },
   list: { marginTop: 28 },
+  listHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  listName: { flexShrink: 1, color: theme.paper, fontFamily: font.display, fontSize: 22 },
+  listCount: {
+    color: theme.paperDim,
+    fontFamily: font.semibold,
+    fontSize: 12,
+    backgroundColor: theme.inkSoft,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  toggle: { marginLeft: 'auto', flexDirection: 'row', gap: 2, padding: 3, borderRadius: 999, backgroundColor: theme.inkSoft },
+  toggleKey: { width: 36, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  toggleKeyOn: { backgroundColor: theme.paper },
   none: { paddingVertical: 32, alignItems: 'center' },
   noneTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
   noneBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, marginTop: 6 },
@@ -275,7 +313,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
   },
   startLabel: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
   sampleHit: { alignSelf: 'center', marginTop: 16, minHeight: 44, justifyContent: 'center' },

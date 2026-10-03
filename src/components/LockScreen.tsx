@@ -13,7 +13,7 @@ import { formatWhen } from '@/lib/format';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { pickBackupBytes } from '@/lib/pickBackup';
 import { useVault } from '@/state/VaultContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 export function LockScreen() {
   const vault = useVault();
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     aspectRatio: 1,
     borderRadius: 230,
-    backgroundColor: 'rgba(180, 83, 26, 0.16)',
+    backgroundColor: tint(0.16),
   },
   column: { maxWidth: '100%', minWidth: 0, paddingHorizontal: 24 },
   kicker: {
@@ -349,8 +349,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: 'rgba(180, 83, 26, 0.45)',
-    backgroundColor: 'rgba(180, 83, 26, 0.06)',
+    borderColor: tint(0.45),
+    backgroundColor: tint(0.06),
     paddingVertical: 28,
     paddingHorizontal: 18,
   },
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.12)',
+    backgroundColor: tint(0.12),
   },
   uploadTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 17, marginTop: 12 },
   uploadMeta: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, marginTop: 4, textAlign: 'center' },

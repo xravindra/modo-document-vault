@@ -8,7 +8,7 @@ import { formatWhen } from '@/lib/format';
 import { hapticSuccess } from '@/lib/haptics';
 import { PLANS, TRIAL_DAYS, type PlanId } from '@/lib/plan';
 import { usePlan } from '@/state/PlanContext';
-import { font, theme } from '@/theme';
+import { font, theme, tint } from '@/theme';
 
 const PERKS: { icon: IconName; title: string; body: string }[] = [
   { icon: 'plus', title: 'Unlimited documents', body: 'Scan, import, and organise as many as you need.' },
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
   },
   badgeText: { color: theme.gold, fontFamily: font.semibold, fontSize: 13 },
   title: { color: theme.paper, fontFamily: font.display, fontSize: 30, lineHeight: 36, marginTop: 18 },
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+    backgroundColor: tint(0.10),
   },
   perkCopy: { flex: 1, minWidth: 0 },
   perkTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.inkRaised,
     padding: 14,
   },
-  planOn: { borderColor: theme.gold, backgroundColor: 'rgba(180, 83, 26, 0.06)' },
+  planOn: { borderColor: theme.gold, backgroundColor: tint(0.06) },
   radio: {
     width: 24,
     height: 24,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   step: { flexDirection: 'row', gap: 12 },
   stepRail: { alignItems: 'center', width: 28 },
   stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.gold },
-  stepLine: { flex: 1, width: 2, minHeight: 14, backgroundColor: 'rgba(180, 83, 26, 0.25)' },
+  stepLine: { flex: 1, width: 2, minHeight: 14, backgroundColor: tint(0.25) },
   stepCopy: { flex: 1, paddingBottom: 14, paddingTop: 3 },
   stepTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
   stepBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 14, marginTop: 1 },
