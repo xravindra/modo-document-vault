@@ -17,6 +17,7 @@ import { readSource } from '@/lib/readSource';
 import { buildSamplePassportPdf } from '@/lib/samplePdf';
 import { kindLabel } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
+import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -38,6 +39,7 @@ function paint() {
 
 export default function AddScreen() {
   const vault = useVault();
+  const plan = usePlan();
   const params = useLocalSearchParams<{ sample?: string; source?: string }>();
   const [phase, setPhase] = useState<'choose' | 'reading'>('choose');
   const [member, setMember] = useState(SELF);
@@ -96,12 +98,12 @@ export default function AddScreen() {
 
   const sourceRef = useRef(false);
   useEffect(() => {
-    if (sourceRef.current || Platform.OS === 'web' || !params.source) return;
+    if (sourceRef.current || Platform.OS === 'web' || !params.source || !plan.ready || !plan.canCreate) return;
     sourceRef.current = true;
     if (params.source === 'camera') void pickImage(true);
     else if (params.source === 'photos') void pickImage(false);
     else if (params.source === 'files') void pickDocument();
-  }, [params.source]);
+  }, [params.source, plan.ready, plan.canCreate]);
 
   function chosenMember() {
     return canonicalMember([], member) || SELF;
@@ -214,7 +216,18 @@ export default function AddScreen() {
       <Quiet>Encrypted the moment it is saved. Nothing leaves this phone.</Quiet>
       <Banner message={message} />
 
-      {phase === 'choose' ? (
+      {plan.ready && !plan.canCreate ? (
+        <View style={styles.ended}>
+          <View style={styles.endedIcon}>
+            <Icon color={theme.gold} name="lock" size={26} />
+          </View>
+          <Text style={styles.endedTitle}>Your free trial has ended</Text>
+          <Text style={styles.endedBody}>Everything you saved is still here. Subscribe to MODO Plus to add new documents.</Text>
+          <PressableScale accessibilityLabel="See plans" onPress={() => router.replace('/plans' as Href)} style={styles.endedButton}>
+            <Text style={styles.endedButtonText}>See plans</Text>
+          </PressableScale>
+        </View>
+      ) : phase === 'choose' ? (
         <View>
           <Step number={1} title={`For ${forName}`}>
             <MemberPicker
@@ -327,6 +340,35 @@ function Source({
 }
 
 const styles = StyleSheet.create({
+  ended: {
+    marginTop: 28,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    padding: 22,
+    alignItems: 'center',
+  },
+  endedIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(180, 83, 26, 0.10)',
+  },
+  endedTitle: { color: theme.paper, fontFamily: font.display, fontSize: 24, marginTop: 14, textAlign: 'center' },
+  endedBody: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 6, textAlign: 'center' },
+  endedButton: {
+    marginTop: 18,
+    minHeight: 52,
+    alignSelf: 'stretch',
+    borderRadius: 16,
+    backgroundColor: theme.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endedButtonText: { color: theme.ink, fontFamily: font.semibold, fontSize: 16 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { flex: 1, color: theme.paper, fontFamily: font.display, fontSize: 30, lineHeight: 36 },
   step: { marginTop: 26 },

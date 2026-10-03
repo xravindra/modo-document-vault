@@ -5,6 +5,7 @@ import { router, type Href } from 'expo-router';
 import { EveryoneFigure, PersonFigure } from '@/components/Avatar';
 import { DocumentStack } from '@/components/DocumentStack';
 import { Icon, type IconName } from '@/components/Icon';
+import { PlanBanner } from '@/components/PlanBanner';
 import { IconButton, PressableScale, Screen, SectionTitle } from '@/components/ui';
 import { categoryMark } from '@/lib/emoji';
 import { compareMembers, documentMember } from '@/lib/members';
@@ -80,6 +81,8 @@ export default function HomeScreen() {
         </View>
         <IconButton label="Lock vault" name="lock" onPress={() => void vault.lock()} />
       </View>
+
+      <PlanBanner />
 
       <View style={styles.searchBox}>
         <Icon color={theme.paperFaint} name="search" size={20} />

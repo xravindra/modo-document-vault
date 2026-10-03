@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { OcrHost } from '@/components/OcrHost';
 import { RasterHost } from '@/components/RasterHost';
+import { PlanProvider } from '@/state/PlanContext';
 import { VaultProvider } from '@/state/VaultContext';
 import { theme } from '@/theme';
 
@@ -34,10 +35,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, width: '100%', maxWidth: '100%', overflow: 'hidden', backgroundColor: theme.ink }}>
       <SafeAreaProvider>
         <VaultProvider>
-          <StatusBar style="dark" />
-          <OcrHost />
-          <RasterHost />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.ink } }} />
+          <PlanProvider>
+            <StatusBar style="dark" />
+            <OcrHost />
+            <RasterHost />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.ink } }} />
+          </PlanProvider>
         </VaultProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -9,6 +9,7 @@ import { deliverFile } from '@/lib/deliver';
 import { formatWhen } from '@/lib/format';
 import { pickBackupBytes } from '@/lib/pickBackup';
 import { PIN_LENGTH } from '@/lib/pin';
+import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -21,6 +22,7 @@ const LOCKS = [
 
 export default function SettingsScreen() {
   const vault = useVault();
+  const plan = usePlan();
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pinStep, setPinStep] = useState<'idle' | 'current' | 'next' | 'confirm'>('idle');
@@ -140,6 +142,29 @@ export default function SettingsScreen() {
       <Text style={styles.title}>Settings</Text>
       <Quiet>Your vault lives only on this phone.</Quiet>
       <Banner message={message} />
+
+      <Group title="Plan">
+        <ListRow
+          detail={
+            plan.status.kind === 'active'
+              ? `Renews ${formatWhen(plan.status.renewsAt)}`
+              : plan.status.kind === 'trial'
+                ? `Free trial, ${plan.status.daysLeft} ${plan.status.daysLeft === 1 ? 'day' : 'days'} left`
+                : 'Trial ended. Your documents are still here.'
+          }
+          icon="shield"
+          label={plan.status.kind === 'active' ? `MODO Plus ${plan.status.plan === 'yearly' ? 'yearly' : 'monthly'}` : 'MODO Plus'}
+          last={!__DEV__}
+          onPress={() => router.push('/plans' as Href)}
+          value={plan.status.kind === 'active' ? 'Active' : 'See plans'}
+        />
+        {__DEV__ ? (
+          <>
+            <ListRow detail="Development builds only" icon="reset" label="Start a fresh trial" onPress={() => void plan.simulate('fresh')} />
+            <ListRow detail="Development builds only" icon="clock" label="End the trial now" last onPress={() => void plan.simulate('ended')} />
+          </>
+        ) : null}
+      </Group>
 
       <Group title="Lock">
         <View style={styles.lockBlock}>

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/Icon';
 import { PressableScale } from '@/components/ui';
+import { usePlan } from '@/state/PlanContext';
 import { font, theme } from '@/theme';
 
 type DockProps = {
@@ -23,6 +24,7 @@ const RIGHT: { name: string; label: string; icon: IconName }[] = [
 
 export function Dock({ state, navigation }: DockProps) {
   const insets = useSafeAreaInsets();
+  const plan = usePlan();
   const current = state.routes[state.index]?.name;
   const tab = (item: { name: string; label: string; icon: IconName }) => {
     const on = current === item.name || (item.name === 'settings' && current === 'security');
@@ -39,7 +41,7 @@ export function Dock({ state, navigation }: DockProps) {
       <View style={styles.inner}>
         {LEFT.map(tab)}
         <View style={styles.addSlot}>
-          <PressableScale accessibilityLabel="Add a document" onPress={() => router.push('/add' as Href)} style={styles.add}>
+          <PressableScale accessibilityLabel="Add a document" onPress={() => router.push((plan.canCreate ? '/add' : '/plans') as Href)} style={styles.add}>
             <Icon color={theme.ink} name="plus" size={28} weight={2.4} />
           </PressableScale>
         </View>

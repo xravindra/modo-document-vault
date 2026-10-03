@@ -3,7 +3,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 
 import { FieldRow } from '@/components/FieldRow';
 import { ZoomFrame } from '@/components/ZoomFrame';
@@ -28,6 +28,7 @@ import { readSource } from '@/lib/readSource';
 import { kindLabel, type ExtractedField, type Extraction } from '@/lib/types';
 import type { PageInput } from '@/lib/vault';
 import { session } from '@/lib/vault';
+import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
 
@@ -36,6 +37,7 @@ type SheetName = 'edit' | 'collage' | 'lock' | 'member' | 'category' | 'rename';
 export default function DocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const vault = useVault();
+  const plan = usePlan();
   const doc = vault.documents.find((item) => item.id === id);
   const [preview, setPreview] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<'ok' | 'failed' | 'checking'>('checking');
@@ -831,6 +833,22 @@ export default function DocumentScreen() {
                       }}
                     />
                   </Group>
+                  {plan.canCreate ? null : (
+                    <Group title="Create">
+                      <ListRow
+                        detail="Pages, PDFs, collages, and copies come with MODO Plus"
+                        icon="lock"
+                        label="Subscribe to create"
+                        last
+                        onPress={() => {
+                          setSheet(null);
+                          router.push('/plans' as Href);
+                        }}
+                        value="Plans"
+                      />
+                    </Group>
+                  )}
+                  {plan.canCreate ? (
                   <Group title="Create">
                     <ListRow
                       detail={`Up to ${MAX_PAGES} pages`}
@@ -855,6 +873,7 @@ export default function DocumentScreen() {
                       onPress={() => void duplicateFile()}
                     />
                   </Group>
+                  ) : null}
                   <Group title="Text and details">
                     <ListRow
                       disabled={extracting || !plain || integrity !== 'ok'}
