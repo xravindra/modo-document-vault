@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -176,11 +176,25 @@ export function LockScreen() {
   }
 
   const prompted = useRef(false);
+  const [wake, setWake] = useState(0);
+  useEffect(() => {
+    let last = AppState.currentState;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (last === 'background' && next === 'active') {
+        prompted.current = false;
+        setWake((count) => count + 1);
+      }
+      last = next;
+    });
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     if (prompted.current || restoring || paused || !vault.hasVault || !vault.biometricsReady) return;
+    if (AppState.currentState !== 'active') return;
     prompted.current = true;
     void biometric(true);
-  }, [restoring, paused, vault.hasVault, vault.biometricsReady]);
+  }, [restoring, paused, vault.hasVault, vault.biometricsReady, wake]);
 
   const title = pending
     ? 'Restore a backup'

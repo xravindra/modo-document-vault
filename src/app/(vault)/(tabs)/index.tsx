@@ -5,6 +5,7 @@ import { router, type Href } from 'expo-router';
 import { CategoryIcon, PersonIcon } from '@/components/Avatar';
 import { DocumentFeed, FavouriteStrip, type FeedLayout } from '@/components/DocumentFeed';
 import { Icon, type IconName } from '@/components/Icon';
+import { BackupBanner } from '@/components/BackupBanner';
 import { PlanBanner } from '@/components/PlanBanner';
 import { IconButton, PressableScale, Screen, SectionTitle } from '@/components/ui';
 import { compareMembers, documentMember } from '@/lib/members';
@@ -87,6 +88,7 @@ export default function HomeScreen() {
       </View>
 
       <PlanBanner />
+      {count > 0 ? <BackupBanner /> : null}
 
       <View style={styles.searchBox}>
         <Icon color={theme.paperFaint} name="search" size={20} />

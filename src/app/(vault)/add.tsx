@@ -264,7 +264,7 @@ export default function AddScreen() {
             <View style={styles.sources}>
               <Source icon="camera" label="Camera" detail="Snap it now" onPress={() => void pickImage(true)} primary />
               <Source icon="image" label="Photos" detail="Up to 8" onPress={() => void pickImage(false)} />
-              <Source icon="file" label="Files" detail="PDF or text" onPress={() => void pickDocument()} />
+              <Source icon="file" label="Files" detail="PDF or image" onPress={() => void pickDocument()} />
             </View>
           </Step>
 

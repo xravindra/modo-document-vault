@@ -97,7 +97,9 @@ const Tile = memo(function Tile({ doc, width }: { doc: VaultDocument; width: num
     <View style={[styles.tile, { width }]}>
       <PressableScale accessibilityLabel={`Open ${doc.title}`} onPress={() => open(doc)} style={styles.tileOpen}>
         <View style={[styles.tileFace, { height: faceHeight }]}>
-          <DocumentPreview doc={doc} faceHeight={faceHeight - 16} maxWidth={width - 16} />
+          <View style={styles.tilePage}>
+            <DocumentPreview doc={doc} faceHeight={faceHeight - 16} maxWidth={width - 16} />
+          </View>
         </View>
         <View style={styles.tileCopy}>
           <Text numberOfLines={1} style={styles.tileTitle}>
@@ -223,6 +225,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  tilePage: { borderRadius: 12, overflow: 'hidden' },
   tileCopy: { paddingHorizontal: 4, paddingTop: 8 },
   tileTitle: { color: theme.paper, fontFamily: font.semibold, fontSize: 14 },
   tileMeta: { color: theme.paperDim, fontFamily: font.body, fontSize: 12, marginTop: 2 },

@@ -58,7 +58,18 @@ export default function DocumentScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
-  const [sheet, setSheet] = useState<SheetName | null>(null);
+  const [sheet, setSheetState] = useState<SheetName | null>(null);
+  const [direct, setDirect] = useState(false);
+
+  function setSheet(next: SheetName | null) {
+    setDirect(false);
+    setSheetState(next);
+  }
+
+  function openDirect(next: 'member' | 'category') {
+    setSheetState(next);
+    setDirect(true);
+  }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [turn, setTurn] = useState(0);
   const [zoomKey, setZoomKey] = useState(0);
@@ -219,6 +230,12 @@ export default function DocumentScreen() {
       vault.releaseAutoLock();
     }
   }
+
+  const fieldsChanged = useMemo(() => {
+    if (!doc) return false;
+    const snapshot = (list: ExtractedField[]) => JSON.stringify(list.map((field) => [field.label.trim(), field.value.trim()]));
+    return snapshot(fields) !== snapshot(pageExtraction(doc, pageIndex).fields);
+  }, [doc, fields, pageIndex]);
 
   function addField() {
     fieldSeq.current += 1;
@@ -690,13 +707,13 @@ export default function DocumentScreen() {
         </View>
         <Text style={styles.docTitle}>{doc.title}</Text>
         <View style={styles.chips}>
-          <PressableScale accessibilityLabel={`Filed under ${documentMember(doc)}. Change`} onPress={() => setSheet('member')} style={styles.chip}>
+          <PressableScale accessibilityLabel={`Filed under ${documentMember(doc)}. Change`} onPress={() => openDirect('member')} style={styles.chip}>
             <Icon color={theme.gold} name="user" size={16} />
             <Text numberOfLines={1} style={styles.chipText}>
               {documentMember(doc)}
             </Text>
           </PressableScale>
-          <PressableScale accessibilityLabel={`Category ${kindLabel(doc.kind)}. Change`} onPress={() => setSheet('category')} style={styles.chip}>
+          <PressableScale accessibilityLabel={`Category ${kindLabel(doc.kind)}. Change`} onPress={() => openDirect('category')} style={styles.chip}>
             <Icon color={theme.gold} name="tag" size={16} />
             <Text numberOfLines={1} style={styles.chipText}>
               {kindLabel(doc.kind)}
@@ -775,6 +792,7 @@ export default function DocumentScreen() {
       </ScrollView>
       <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         <View style={styles.dockInner}>
+          <DockAction disabled={saving || !fieldsChanged} icon="check" label={saving ? 'Saving…' : 'Save details'} onPress={() => void saveFields()} />
           <DockAction
             disabled={!plain || integrity !== 'ok'}
             icon="share"
@@ -782,8 +800,7 @@ export default function DocumentScreen() {
             onPress={() => void shareFile()}
             primary
           />
-          <DockAction disabled={!plain || integrity !== 'ok'} icon="download" label="Save" onPress={() => void download()} />
-          <DockAction icon="rotate" label="Rotate" onPress={() => void rotateDocument()} />
+          <DockAction disabled={!plain || integrity !== 'ok'} icon="download" label="Download" onPress={() => void download()} />
           <DockAction icon="more" label="More" onPress={() => setSheet('edit')} />
         </View>
       </View>
@@ -793,7 +810,7 @@ export default function DocumentScreen() {
           <View style={[styles.sheet, { maxHeight: Math.max(320, height - insets.top - 24), paddingBottom: Math.max(insets.bottom, 16) }]}>
             <View style={styles.grabber} />
             <View style={styles.sheetHead}>
-              {sheet !== 'edit' ? (
+              {sheet !== 'edit' && !direct ? (
                 <IconButton label="Back to all actions" name="back" onPress={() => setSheet('edit')} />
               ) : (
                 <View style={styles.sheetLink} />
@@ -820,8 +837,15 @@ export default function DocumentScreen() {
               {sheet === 'edit' ? (
                 <View style={styles.groups}>
                   <Group title="Organise">
-                    <ListRow icon="user" label="Filed under" onPress={() => setSheet('member')} value={documentMember(doc)} />
-                    <ListRow icon="tag" label="Category" onPress={() => setSheet('category')} value={kindLabel(doc.kind)} />
+                    <ListRow
+                      detail="Turn the page a quarter to the right"
+                      icon="rotate"
+                      label="Rotate"
+                      onPress={() => {
+                        setSheet(null);
+                        void rotateDocument();
+                      }}
+                    />
                     <ListRow
                       accessibilityLabel={`Rename ${shownName}`}
                       disabled={pageIndex !== 0}
@@ -887,8 +911,7 @@ export default function DocumentScreen() {
                       label={extracted.noiseCleared ? 'Show original text' : 'Hide noisy lines'}
                       onPress={() => void toggleNoise()}
                     />
-                    <ListRow icon="plus" label="Add a detail" onPress={addField} />
-                    <ListRow disabled={saving} icon="check" label={saving ? 'Saving…' : 'Save details'} last={fields.length === 0} onPress={() => void saveFields()} />
+                    <ListRow icon="plus" label="Add a detail" last={fields.length === 0} onPress={addField} />
                     {fields.length > 0 ? <ListRow icon="list" label="Share details" last onPress={() => void shareDetails()} /> : null}
                   </Group>
                   <Group title="Protect">
@@ -1034,7 +1057,7 @@ export default function DocumentScreen() {
                     void vault
                       .assignMember(doc.id, name)
                       .then(() => {
-                        setSheet('edit');
+                        setSheet(null);
                         setMessage(`Filed under ${name}.`);
                       })
                       .catch((error: unknown) => {
@@ -1053,7 +1076,7 @@ export default function DocumentScreen() {
                     void vault
                       .assignKind(doc.id, kind)
                       .then(() => {
-                        setSheet('edit');
+                        setSheet(null);
                         setMessage(`Category set to ${kindLabel(kind)}.`);
                       })
                       .catch((error: unknown) => {
@@ -1112,7 +1135,9 @@ function DockAction({
   return (
     <PressableScale accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.dockButton, primary ? styles.dockPrimary : null]}>
       <Icon color={primary ? theme.ink : theme.paper} name={icon} size={22} />
-      <Text style={[styles.dockLabel, primary ? styles.dockLabelPrimary : null]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.dockLabel, primary ? styles.dockLabelPrimary : null]}>
+        {label}
+      </Text>
     </PressableScale>
   );
 }

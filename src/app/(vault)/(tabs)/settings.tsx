@@ -5,10 +5,11 @@ import { router, type Href } from 'expo-router';
 import { Banner, Group, ListRow, PressableScale, Quiet, Screen } from '@/components/ui';
 import { PinPad } from '@/components/PinPad';
 import { backupSummary } from '@/lib/backup';
-import { deliverFile } from '@/lib/deliver';
+import { BACKUP_EVERY } from '@/lib/backupSchedule';
 import { formatWhen } from '@/lib/format';
 import { pickBackupBytes } from '@/lib/pickBackup';
 import { PIN_LENGTH } from '@/lib/pin';
+import { useBackup } from '@/state/BackupContext';
 import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
 import { font, theme } from '@/theme';
@@ -23,6 +24,7 @@ const LOCKS = [
 export default function SettingsScreen() {
   const vault = useVault();
   const plan = usePlan();
+  const backup = useBackup();
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pinStep, setPinStep] = useState<'idle' | 'current' | 'next' | 'confirm'>('idle');
@@ -38,8 +40,7 @@ export default function SettingsScreen() {
     setBusy(true);
     setMessage(null);
     try {
-      const bytes = await vault.exportBackup();
-      await deliverFile(`modo-vault-${new Date().toISOString().slice(0, 10)}.json`, bytes, 'application/json');
+      await backup.backUpNow();
       setMessage('Backup saved. Keep it somewhere other than this phone. The file and your PIN together open the vault.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Export failed.');
@@ -219,11 +220,36 @@ export default function SettingsScreen() {
       </Group>
 
       <Group title="Backup">
+        <View style={styles.lockBlock}>
+          <Text style={styles.blockLabel}>Back up to Google Drive</Text>
+          <Text style={styles.blockHint}>
+            {backup.schedule.every === 'off'
+              ? 'Pick how often. When a backup is due, MODO reminds you on Home and opens the share sheet so you can choose Drive.'
+              : backup.schedule.lastAt
+                ? `Last backup ${formatWhen(backup.schedule.lastAt)}. ${backup.due ? 'A new one is due.' : ''}`
+                : 'No backup yet. One is due now.'}
+          </Text>
+          <View style={styles.segment}>
+            {BACKUP_EVERY.map((option) => {
+              const on = backup.schedule.every === option.id;
+              return (
+                <PressableScale
+                  key={option.id}
+                  accessibilityLabel={`Back up ${option.label}`}
+                  onPress={() => void backup.setEvery(option.id)}
+                  style={[styles.segmentItem, on ? styles.segmentOn : null]}
+                >
+                  <Text style={[styles.segmentText, on ? styles.segmentTextOn : null]}>{option.label}</Text>
+                </PressableScale>
+              );
+            })}
+          </View>
+        </View>
         <ListRow
-          detail="An encrypted file you can keep elsewhere"
-          disabled={busy}
+          detail="An encrypted file. Choose Google Drive in the share sheet."
+          disabled={busy || backup.busy}
           icon="upload"
-          label={busy ? 'Working…' : 'Export a backup'}
+          label={busy || backup.busy ? 'Working…' : 'Back up now'}
           onPress={() => void exportBackup()}
         />
         <ListRow
@@ -293,6 +319,7 @@ const styles = StyleSheet.create({
   title: { color: theme.paper, fontFamily: font.display, fontSize: 32, lineHeight: 38 },
   lockBlock: { padding: 14, borderBottomWidth: 1, borderBottomColor: theme.line },
   blockLabel: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
+  blockHint: { color: theme.paperDim, fontFamily: font.body, fontSize: 13, lineHeight: 19, marginTop: 4 },
   segment: { flexDirection: 'row', marginTop: 12, padding: 4, borderRadius: 14, backgroundColor: theme.ink, gap: 4 },
   segmentItem: { flex: 1, minHeight: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   segmentOn: { backgroundColor: theme.sheet, borderWidth: 1, borderColor: theme.line },
