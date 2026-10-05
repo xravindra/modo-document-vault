@@ -3,7 +3,7 @@ import { sanitizeEmojiMap } from './emoji';
 import { isDocKind, type Catalog, type VaultDocument } from './types';
 
 export const UNASSIGNED = 'Unassigned';
-export const MEMBER_ROLES = ['Father', 'Mother', 'Brother', 'Sister', 'Self'] as const;
+export const MEMBER_ROLES = ['Father', 'Mother', 'Brother', 'Sister', 'Wife', 'Self'] as const;
 export const SELF = 'Self';
 export const MEMBER_LIMIT = 30;
 

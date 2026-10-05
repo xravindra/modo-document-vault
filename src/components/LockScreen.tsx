@@ -12,6 +12,7 @@ import { PIN_LENGTH } from '@/lib/pin';
 import { formatWhen } from '@/lib/format';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { pickBackupBytes } from '@/lib/pickBackup';
+import { BIOMETRIC_CANCELLED } from '@/lib/vault';
 import { useVault } from '@/state/VaultContext';
 import { font, theme, tint } from '@/theme';
 
@@ -167,9 +168,9 @@ export function LockScreen() {
       await vault.unlockWithBiometrics();
       hapticSuccess();
     } catch (error) {
-      if (!automatic) {
-        shakeDots(error instanceof Error ? error.message : 'Fingerprint unlock was cancelled.');
-      }
+      vault.clearError();
+      const text = error instanceof Error ? error.message : BIOMETRIC_CANCELLED;
+      if (!automatic && text !== BIOMETRIC_CANCELLED) shakeDots(text);
     } finally {
       setBusy('');
     }

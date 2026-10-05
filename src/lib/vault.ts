@@ -7,6 +7,8 @@ import { deviceBiometricsAvailable, fingerprintEnrolled, promptBiometrics } from
 import * as blobs from './blobStore';
 import * as keys from './keyStore';
 import { createEnvelope, openBytes, openEnvelope, sealBytes, sha256Hex, VaultError } from './seal';
+
+export const BIOMETRIC_CANCELLED = 'Fingerprint unlock was cancelled.';
 import { canonicalCategory, CATEGORY_LIMIT, rememberCategory, sameCategory } from './categories';
 import { isEmojiChoice } from './emoji';
 import { canonicalMember, MEMBER_LIMIT, memberRole, normalizeMember, rememberMember, sameMember, SELF, settleCatalog } from './members';
@@ -207,9 +209,16 @@ class VaultSession {
       if (mode === 'off') throw new VaultError('Biometrics are not turned on.');
       if (mode === 'gate') {
         const accepted = await promptBiometrics();
-        if (!accepted) throw new VaultError('Biometric unlock was cancelled.');
+        if (!accepted) throw new VaultError(BIOMETRIC_CANCELLED);
       }
-      const hex = await keys.readBiometricKey(mode);
+      let hex: string | null;
+      try {
+        hex = await keys.readBiometricKey(mode);
+      } catch (error) {
+        const text = error instanceof Error ? error.message : '';
+        if (/cancel/i.test(text)) throw new VaultError(BIOMETRIC_CANCELLED);
+        throw new VaultError('Fingerprint could not be checked. Use your PIN.');
+      }
       if (!hex) throw new VaultError('No biometric key is stored on this device.');
       try {
         this.key = await AESEncryptionKey.import(hex, 'hex');
@@ -386,7 +395,7 @@ class VaultSession {
       this.assertOpen();
       this.catalog.members = this.catalog.members ?? [];
       const member = canonicalMember(this.catalog.members, normalizeMember(name));
-      if (!member || memberRole(member)) throw new VaultError('Father, Mother, Brother, Sister, and Self stay in the vault.');
+      if (!member || memberRole(member)) throw new VaultError('Father, Mother, Brother, Sister, Wife, and Self stay in the vault.');
       if (!this.catalog.members.some((item) => sameMember(item, member))) return;
       this.catalog.members = this.catalog.members.filter((item) => !sameMember(item, member));
       if (this.catalog.memberEmoji?.[member]) {

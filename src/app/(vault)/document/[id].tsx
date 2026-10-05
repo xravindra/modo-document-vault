@@ -32,7 +32,7 @@ import { usePlan } from '@/state/PlanContext';
 import { useVault } from '@/state/VaultContext';
 import { font, shade, theme } from '@/theme';
 
-type SheetName = 'edit' | 'collage' | 'lock' | 'member' | 'category' | 'rename';
+type SheetName = 'edit' | 'collage' | 'lock' | 'member' | 'category';
 
 export default function DocumentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,6 +51,8 @@ export default function DocumentScreen() {
   const [deletingPage, setDeletingPage] = useState(false);
   const [imageRatio, setImageRatio] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const renamingRef = useRef(false);
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -180,12 +182,28 @@ export default function DocumentScreen() {
   const pdfFile = mime.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
   const collageCount = (plain && canEmbedImage(mime) ? 1 : 0) + collageExtras.length;
 
+  function startLock() {
+    setMessage(null);
+    if (hasTwin) {
+      void switchCopy();
+      return;
+    }
+    setPassword('');
+    setConfirmPassword('');
+    setSheet('lock');
+  }
+
   function beginRename() {
     if (!doc || pageIndex !== 0) return;
     setDraftName(doc.fileName);
+    renamingRef.current = true;
+    setRenaming(true);
   }
 
   async function commitRename() {
+    if (!renamingRef.current) return;
+    renamingRef.current = false;
+    setRenaming(false);
     if (!doc) return;
     const next = draftName.trim();
     if (!next || next === doc.fileName) return;
@@ -682,8 +700,8 @@ export default function DocumentScreen() {
         style={styles.scroll}
       >
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-          <IconButton label="Back" name="back" onPress={() => goBack()} />
           <View style={styles.topRight}>
+            <IconButton label="Back" name="back" onPress={() => goBack()} />
             {zoomed ? (
               <PressableScale
                 accessibilityLabel="Recenter document"
@@ -696,6 +714,34 @@ export default function DocumentScreen() {
                 <Text style={styles.centerText}>Fit</Text>
               </PressableScale>
             ) : null}
+          </View>
+          <View style={styles.topRight}>
+            <IconButton
+              disabled={unlocking || !plain || integrity !== 'ok'}
+              label={showingLocked ? 'Unlock file' : 'Lock with a password'}
+              name={showingLocked ? 'unlock' : 'lock'}
+              onPress={startLock}
+              tone={showingLocked ? 'accent' : 'plain'}
+            />
+            <IconButton
+              disabled={plan.canCreate && (busyCopy !== null || integrity !== 'ok')}
+              label="Duplicate"
+              name="copy"
+              onPress={() => {
+                if (!plan.canCreate) {
+                  router.push('/plans' as Href);
+                  return;
+                }
+                void duplicateFile();
+              }}
+            />
+            <IconButton label="Rotate" name="rotate" onPress={() => void rotateDocument()} />
+            <IconButton
+              label={extracted.noiseCleared ? 'Show original text' : 'Hide noisy lines'}
+              name="sparkle"
+              onPress={() => void toggleNoise()}
+              tone={extracted.noiseCleared ? 'accent' : 'plain'}
+            />
             <IconButton
               filled={!!doc.favourite}
               label={doc.favourite ? 'Remove from favourites' : 'Mark as a favourite'}
@@ -745,9 +791,33 @@ export default function DocumentScreen() {
             </View>
           </ScrollView>
           <View style={styles.caption}>
-            <Text numberOfLines={1} style={styles.captionName}>
-              {shownName}
-            </Text>
+            {renaming ? (
+              <TextInput
+                accessibilityLabel="File name"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                onBlur={() => void commitRename()}
+                onChangeText={setDraftName}
+                onSubmitEditing={() => void commitRename()}
+                returnKeyType="done"
+                selectTextOnFocus
+                style={styles.captionInput}
+                value={draftName}
+              />
+            ) : (
+              <PressableScale
+                accessibilityLabel={pageIndex === 0 ? `Rename ${shownName}` : `File name ${shownName}`}
+                disabled={pageIndex !== 0}
+                onPress={beginRename}
+                style={styles.captionNameHit}
+              >
+                <Text numberOfLines={1} style={styles.captionName}>
+                  {shownName}
+                </Text>
+                {pageIndex === 0 ? <Icon color={theme.paperFaint} name="pencil" size={14} /> : null}
+              </PressableScale>
+            )}
             <Text style={styles.captionMeta}>
               {formatBytes(page?.byteLength ?? doc.byteLength)}
               {' · '}
@@ -793,6 +863,7 @@ export default function DocumentScreen() {
       <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         <View style={styles.dockInner}>
           <DockAction disabled={saving || !fieldsChanged} icon="check" label={saving ? 'Saving…' : 'Save details'} onPress={() => void saveFields()} />
+          <DockAction disabled={!plain || integrity !== 'ok'} icon="download" label="Download" onPress={() => void download()} />
           <DockAction
             disabled={!plain || integrity !== 'ok'}
             icon="share"
@@ -800,7 +871,6 @@ export default function DocumentScreen() {
             onPress={() => void shareFile()}
             primary
           />
-          <DockAction disabled={!plain || integrity !== 'ok'} icon="download" label="Download" onPress={() => void download()} />
           <DockAction icon="more" label="More" onPress={() => setSheet('edit')} />
         </View>
       </View>
@@ -826,9 +896,7 @@ export default function DocumentScreen() {
                       ? 'Filed under'
                       : sheet === 'category'
                         ? 'Category'
-                        : sheet === 'rename'
-                          ? 'Rename'
-                          : 'More'}
+                        : 'More'}
               </Text>
               <IconButton label="Close" name="close" onPress={() => setSheet(null)} />
             </View>
@@ -836,28 +904,6 @@ export default function DocumentScreen() {
             <ScrollView bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetBody}>
               {sheet === 'edit' ? (
                 <View style={styles.groups}>
-                  <Group title="Organise">
-                    <ListRow
-                      detail="Turn the page a quarter to the right"
-                      icon="rotate"
-                      label="Rotate"
-                      onPress={() => {
-                        setSheet(null);
-                        void rotateDocument();
-                      }}
-                    />
-                    <ListRow
-                      accessibilityLabel={`Rename ${shownName}`}
-                      disabled={pageIndex !== 0}
-                      icon="pencil"
-                      label="Rename"
-                      last
-                      onPress={() => {
-                        beginRename();
-                        setSheet('rename');
-                      }}
-                    />
-                  </Group>
                   {plan.canCreate ? null : (
                     <Group title="Create">
                       <ListRow
@@ -889,14 +935,7 @@ export default function DocumentScreen() {
                       label={busyCopy === 'convert' ? 'Converting…' : imageFile ? 'Make a PDF' : 'Make an image'}
                       onPress={() => void convertFile()}
                     />
-                    <ListRow detail="Combine up to 4 photos" icon="grid" label="Collage" onPress={() => setSheet('collage')} />
-                    <ListRow
-                      disabled={busyCopy !== null || integrity !== 'ok'}
-                      icon="copy"
-                      label={busyCopy === 'duplicate' ? 'Copying…' : 'Duplicate'}
-                      last
-                      onPress={() => void duplicateFile()}
-                    />
+                    <ListRow detail="Combine up to 4 photos" icon="grid" label="Collage" last onPress={() => setSheet('collage')} />
                   </Group>
                   ) : null}
                   <Group title="Text and details">
@@ -906,32 +945,8 @@ export default function DocumentScreen() {
                       label={extracting ? 'Reading…' : 'Read the text again'}
                       onPress={() => void extractText()}
                     />
-                    <ListRow
-                      icon="sparkle"
-                      label={extracted.noiseCleared ? 'Show original text' : 'Hide noisy lines'}
-                      onPress={() => void toggleNoise()}
-                    />
                     <ListRow icon="plus" label="Add a detail" last={fields.length === 0} onPress={addField} />
                     {fields.length > 0 ? <ListRow icon="list" label="Share details" last onPress={() => void shareDetails()} /> : null}
-                  </Group>
-                  <Group title="Protect">
-                    <ListRow
-                      detail={showingLocked ? 'Remove the file password' : 'Add a password to the file itself'}
-                      disabled={unlocking || !plain || integrity !== 'ok'}
-                      icon={showingLocked ? 'unlock' : 'lock'}
-                      label={unlocking ? 'Working…' : showingLocked ? 'Unlock file' : 'Lock with a password'}
-                      last
-                      onPress={() => {
-                        setMessage(null);
-                        if (hasTwin) {
-                          void switchCopy();
-                          return;
-                        }
-                        setPassword('');
-                        setConfirmPassword('');
-                        setSheet('lock');
-                      }}
-                    />
                   </Group>
                   <Group title="Remove">
                     <ListRow icon="reset" label="Reset to original" onPress={() => void resetDocument()} />
@@ -1086,31 +1101,6 @@ export default function DocumentScreen() {
                   selected={doc.kind}
                 />
               ) : null}
-              {sheet === 'rename' ? (
-                <View>
-                  <Text style={styles.panelNote}>This changes the file name stored with the document.</Text>
-                  <TextInput
-                    accessibilityLabel="File name"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoFocus
-                    onChangeText={setDraftName}
-                    onSubmitEditing={() => void commitRename()}
-                    style={styles.sheetInput}
-                    value={draftName}
-                  />
-                  <PressableScale
-                    accessibilityLabel="Save file name"
-                    onPress={() => {
-                      void commitRename();
-                      setSheet('edit');
-                    }}
-                    style={styles.panelPrimary}
-                  >
-                    <Text style={styles.panelPrimaryText}>Save name</Text>
-                  </PressableScale>
-                </View>
-              ) : null}
             </ScrollView>
           </View>
         </View>
@@ -1147,7 +1137,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, width: '100%' },
   column: { alignSelf: 'center', maxWidth: '100%', paddingHorizontal: 18 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   centerHit: { minHeight: 44, justifyContent: 'center', borderRadius: 999, backgroundColor: theme.paper, paddingHorizontal: 16 },
   centerText: { color: theme.ink, fontFamily: font.semibold, fontSize: 14 },
   docTitle: { color: theme.paper, fontFamily: font.display, fontSize: 28, lineHeight: 34, marginTop: 14 },
@@ -1190,7 +1180,20 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   caption: { paddingHorizontal: 18, paddingTop: 14 },
-  captionName: { color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  captionName: { flexShrink: 1, color: theme.paper, fontFamily: font.semibold, fontSize: 15 },
+  captionNameHit: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', maxWidth: '100%', minHeight: 32 },
+  captionInput: {
+    color: theme.paper,
+    fontFamily: font.semibold,
+    fontSize: 15,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.gold,
+    backgroundColor: theme.sheet,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
   captionMeta: { color: theme.paperDim, fontFamily: font.medium, fontSize: 13, marginTop: 4 },
   pager: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
   pagePill: {

@@ -108,12 +108,14 @@ export function Screen({
 export function PressableScale({
   children,
   onPress,
+  onLongPress,
   disabled,
   accessibilityLabel,
   style,
 }: {
   children: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
@@ -126,6 +128,7 @@ export function PressableScale({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
+      onLongPress={onLongPress}
       onPress={onPress}
       onPressIn={() => {
         scale.value = withSpring(0.97, { damping: 16, stiffness: 320 });

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AddAvatarChoice, AvatarChoice, EmojiPicker } from '@/components/Avatar';
+import { ChoiceMenu } from '@/components/ChoiceMenu';
 import { PressableScale } from '@/components/ui';
 import { memberMark } from '@/lib/emoji';
 import { canonicalMember, MEMBER_ROLES, memberRole, normalizeMember, sameMember, SELF } from '@/lib/members';
@@ -13,16 +14,25 @@ export function MemberPicker({
   selected,
   onSelect,
   onRemoved,
+  showLabel = true,
+  scroll = false,
+  holdMenu = false,
 }: {
   members: string[];
   selected: string;
   onSelect: (name: string) => void;
   onRemoved?: (name: string) => void;
+  showLabel?: boolean;
+  /** Lay members out in one horizontally scrolling row instead of wrapping. */
+  scroll?: boolean;
+  /** Move emoji and delete into a drawer opened by pressing and holding a member. */
+  holdMenu?: boolean;
 }) {
   const [draft, setDraft] = useState('');
   const [composing, setComposing] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const vault = useVault();
   const pending = normalizeMember(selected);
   const custom = members.filter((name) => !memberRole(name));
@@ -46,10 +56,10 @@ export function MemberPicker({
     setComposing(false);
   }
 
-  function remove() {
-    const name = pendingDelete;
+  function remove(name: string | null) {
     if (!name) return;
     setPendingDelete(null);
+    setMenuFor(null);
     void vault
       .removeMember(name)
       .then(() => {
@@ -60,9 +70,17 @@ export function MemberPicker({
   }
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.label}>Family member</Text>
-      <View style={styles.people}>
+    <View style={[styles.wrap, showLabel ? null : styles.wrapBare]}>
+      {showLabel ? <Text style={styles.label}>Family member</Text> : null}
+      <ScrollView
+        contentContainerStyle={scroll ? styles.peopleRow : styles.people}
+        horizontal={scroll}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={scroll}
+        showsHorizontalScrollIndicator={false}
+        style={scroll ? styles.peopleScroll : undefined}
+      >
+        <AddAvatarChoice accessibilityLabel="Add family member" onPress={add} />
         {shown.map((name) => {
           const removable = custom.some((item) => sameMember(item, name));
           return (
@@ -71,10 +89,23 @@ export function MemberPicker({
                 accessibilityLabel={`File under ${name}`}
                 emoji={memberMark(name, vault.memberEmoji)}
                 name={name}
-                onPress={() => onSelect(canonicalMember(members, name))}
+                onLongPress={holdMenu ? () => setMenuFor(name) : undefined}
+                onPress={() => {
+                  if (holdMenu) {
+                    if (!sameMember(name, chosen)) onSelect(canonicalMember(members, name));
+                    return;
+                  }
+                  if (sameMember(name, chosen)) {
+                    setPendingDelete(null);
+                    setEmojiOpen((open) => !open);
+                    return;
+                  }
+                  setEmojiOpen(false);
+                  onSelect(canonicalMember(members, name));
+                }}
                 selected={sameMember(name, chosen)}
               />
-              {removable ? (
+              {removable && !holdMenu ? (
                 <PressableScale
                   accessibilityLabel={`Delete ${name}`}
                   onPress={() => {
@@ -89,11 +120,7 @@ export function MemberPicker({
             </View>
           );
         })}
-        <AddAvatarChoice accessibilityLabel="Add family member" onPress={add} />
-      </View>
-      <PressableScale accessibilityLabel="Set family member emoji" onPress={() => setEmojiOpen((open) => !open)} style={styles.emojiToggle}>
-        <Text style={styles.emojiToggleText}>{emojiOpen ? 'Close emojis' : 'Set emoji'}</Text>
-      </PressableScale>
+      </ScrollView>
       {emojiOpen ? (
         <EmojiPicker
           onSelect={(emoji) => {
@@ -112,7 +139,7 @@ export function MemberPicker({
             <PressableScale accessibilityLabel="Cancel delete" onPress={() => setPendingDelete(null)} style={styles.cancel}>
               <Text style={styles.cancelText}>Cancel</Text>
             </PressableScale>
-            <PressableScale accessibilityLabel={`Delete ${pendingDelete}`} onPress={remove} style={styles.delete}>
+            <PressableScale accessibilityLabel={`Delete ${pendingDelete}`} onPress={() => remove(pendingDelete)} style={styles.delete}>
               <Text style={styles.deleteText}>Delete</Text>
             </PressableScale>
           </View>
@@ -133,12 +160,37 @@ export function MemberPicker({
           value={draft}
         />
       ) : null}
+      {holdMenu ? (
+        <ChoiceMenu
+          onClose={() => setMenuFor(null)}
+          onDelete={() => remove(menuFor)}
+          onEmoji={(emoji) => {
+            if (!menuFor) return;
+            void vault
+              .setMemberEmoji(menuFor, emoji)
+              .then(() => setMenuFor(null))
+              .catch(() => undefined);
+          }}
+          target={
+            menuFor
+              ? {
+                  label: menuFor,
+                  emoji: memberMark(menuFor, vault.memberEmoji),
+                  deleteNote: custom.some((item) => sameMember(item, menuFor))
+                    ? `Documents filed under ${menuFor} move to Self.`
+                    : undefined,
+                }
+              : null
+          }
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { width: '100%', marginTop: 18 },
+  wrapBare: { marginTop: 0 },
   label: {
     color: theme.gold,
     fontFamily: font.semibold,
@@ -147,6 +199,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   people: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
+  peopleScroll: { marginTop: 12, marginHorizontal: -4 },
+  peopleRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 4 },
   slot: { width: 76, alignItems: 'center' },
   remove: {
     position: 'absolute',
@@ -167,8 +221,6 @@ const styles = StyleSheet.create({
   cancelText: { color: theme.paper, fontFamily: font.medium, fontSize: 14 },
   delete: { borderRadius: 14, backgroundColor: theme.danger, paddingHorizontal: 14, paddingVertical: 10 },
   deleteText: { color: theme.ink, fontFamily: font.semibold, fontSize: 14 },
-  emojiToggle: { alignSelf: 'flex-start', marginTop: 12 },
-  emojiToggleText: { color: theme.gold, fontFamily: font.medium, fontSize: 14 },
   input: {
     width: '100%',
     marginTop: 12,

@@ -45,7 +45,6 @@ export default function AddScreen() {
   const [member, setMember] = useState(SELF);
   const [kind, setKind] = useState<string | null>(null);
   const [readingLabel, setReadingLabel] = useState('Reading the document…');
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const sampleRef = useRef(false);
 
@@ -238,26 +237,25 @@ export default function AddScreen() {
                 setMessage(null);
               }}
               selected={member}
+              holdMenu
+              scroll
+              showLabel={false}
             />
           </Step>
 
-          <Step number={2} title="Category">
-            <PressableScale accessibilityLabel="Choose a category" onPress={() => setDetailsOpen((open) => !open)} style={styles.kindRow}>
-              <Text style={styles.kindValue}>{kind ? kindLabel(kind) : 'Detect automatically'}</Text>
-              <Text style={styles.kindChange}>{detailsOpen ? 'Done' : 'Change'}</Text>
-            </PressableScale>
-            {detailsOpen ? (
-              <KindPicker
-                categories={vault.categories}
-                onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
-                onSelect={(next) => {
-                  setKind(next);
-                  setMessage(null);
-                  setDetailsOpen(false);
-                }}
-                selected={kind}
-              />
-            ) : null}
+          <Step number={2} title={`Category · ${kind ? kindLabel(kind) : 'Auto'}`}>
+            <KindPicker
+              categories={vault.categories}
+              onRemoved={(name) => setMessage(`${name} was removed. Those documents are now Other.`)}
+              onSelect={(next) => {
+                setKind(next);
+                setMessage(null);
+              }}
+              holdMenu
+              scroll
+              selected={kind}
+              showLabel={false}
+            />
           </Step>
 
           <Step number={3} title="Add from">
@@ -383,20 +381,6 @@ const styles = StyleSheet.create({
   },
   stepNumber: { color: theme.ink, fontFamily: font.semibold, fontSize: 13 },
   stepTitle: { flex: 1, color: theme.paper, fontFamily: font.semibold, fontSize: 18 },
-  kindRow: {
-    marginTop: 12,
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.line,
-    backgroundColor: theme.inkRaised,
-    paddingHorizontal: 16,
-  },
-  kindValue: { color: theme.paper, fontFamily: font.medium, fontSize: 16 },
-  kindChange: { color: theme.gold, fontFamily: font.semibold, fontSize: 15 },
   sources: { flexDirection: 'row', gap: 10, marginTop: 12 },
   source: {
     flex: 1,

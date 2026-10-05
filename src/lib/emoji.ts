@@ -9,6 +9,7 @@ export const EMOJI_CHOICES = [
   '👴',
   '👵',
   '👶',
+  '👰',
   '🧔',
   '👱',
   '😀',
@@ -63,6 +64,7 @@ const ROLE_EMOJI = {
   Mother: '👩',
   Brother: '👦',
   Sister: '👧',
+  Wife: '👰',
   Self: '🧑',
 } as const;
 
