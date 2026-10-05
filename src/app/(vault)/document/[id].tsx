@@ -56,6 +56,7 @@ export default function DocumentScreen() {
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [detailsMenu, setDetailsMenu] = useState(false);
   const [revision, setRevision] = useState(0);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -258,8 +259,8 @@ export default function DocumentScreen() {
   function addField() {
     fieldSeq.current += 1;
     setFields((current) => [
-      ...current,
       { key: `custom-${fieldSeq.current}`, label: '', value: '', confidence: 1 },
+      ...current,
     ]);
   }
 
@@ -842,7 +843,58 @@ export default function DocumentScreen() {
           ) : null}
         </View>
         {extracted.note ? <Text style={styles.note}>{extracted.note}</Text> : null}
-        <Text style={styles.detailsTitle}>{fields.length > 0 ? 'Details' : 'No details on this page'}</Text>
+        <View style={styles.detailsHead}>
+          <Text numberOfLines={1} style={styles.detailsTitle}>
+            {fields.length > 0 ? 'Details' : 'No details on this page'}
+          </Text>
+          <PressableScale
+            accessibilityLabel={detailsMenu ? 'Close details menu' : 'Details menu'}
+            onPress={() => setDetailsMenu((open) => !open)}
+            style={[styles.detailsMenuButton, detailsMenu ? styles.detailsMenuButtonOn : null]}
+          >
+            <Icon color={detailsMenu ? theme.ink : theme.gold} name="menu" size={20} />
+          </PressableScale>
+        </View>
+        {detailsMenu ? (
+          <View style={styles.detailsMenu}>
+            <PressableScale
+              accessibilityLabel="Add a detail"
+              onPress={() => {
+                setDetailsMenu(false);
+                addField();
+              }}
+              style={styles.detailsMenuRow}
+            >
+              <Icon color={theme.gold} name="plus" size={18} />
+              <Text style={styles.detailsMenuText}>Add new</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel={fields.length > 0 ? 'Extract text' : 'Read text'}
+              disabled={extracting || !plain || integrity !== 'ok'}
+              onPress={() => {
+                setDetailsMenu(false);
+                void extractText();
+              }}
+              style={[styles.detailsMenuRow, styles.detailsMenuLine]}
+            >
+              <Icon color={theme.gold} name="text" size={18} />
+              <Text style={styles.detailsMenuText}>{extracting ? 'Reading…' : fields.length > 0 ? 'Extract text' : 'Read text'}</Text>
+            </PressableScale>
+            {fields.length > 0 ? (
+              <PressableScale
+                accessibilityLabel="Share text"
+                onPress={() => {
+                  setDetailsMenu(false);
+                  void shareDetails();
+                }}
+                style={[styles.detailsMenuRow, styles.detailsMenuLine]}
+              >
+                <Icon color={theme.gold} name="share" size={18} />
+                <Text style={styles.detailsMenuText}>Share text</Text>
+              </PressableScale>
+            ) : null}
+          </View>
+        ) : null}
         {fields.map((field, index) => (
           <FieldRow
             key={`${shownIndex}-${field.key}`}
@@ -938,16 +990,6 @@ export default function DocumentScreen() {
                     <ListRow detail="Combine up to 4 photos" icon="grid" label="Collage" last onPress={() => setSheet('collage')} />
                   </Group>
                   ) : null}
-                  <Group title="Text and details">
-                    <ListRow
-                      disabled={extracting || !plain || integrity !== 'ok'}
-                      icon="text"
-                      label={extracting ? 'Reading…' : 'Read the text again'}
-                      onPress={() => void extractText()}
-                    />
-                    <ListRow icon="plus" label="Add a detail" last={fields.length === 0} onPress={addField} />
-                    {fields.length > 0 ? <ListRow icon="list" label="Share details" last onPress={() => void shareDetails()} /> : null}
-                  </Group>
                   <Group title="Remove">
                     <ListRow icon="reset" label="Reset to original" onPress={() => void resetDocument()} />
                     {pages.length > 1 ? (
@@ -1208,15 +1250,39 @@ const styles = StyleSheet.create({
   pagePillText: { color: theme.paper, fontFamily: font.semibold, fontSize: 16 },
   pagePillTextOn: { color: theme.ink },
   note: { color: theme.paperDim, fontFamily: font.body, fontSize: 15, lineHeight: 22, marginTop: 16 },
+  detailsHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 8 },
   detailsTitle: {
+    flex: 1,
     color: theme.gold,
     fontFamily: font.semibold,
     fontSize: 12,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginTop: 22,
-    marginBottom: 8,
   },
+  detailsMenuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+  },
+  detailsMenuButtonOn: { backgroundColor: theme.gold, borderColor: theme.gold },
+  detailsMenu: {
+    alignSelf: 'flex-end',
+    minWidth: 200,
+    marginBottom: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.inkRaised,
+    overflow: 'hidden',
+  },
+  detailsMenuRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 14 },
+  detailsMenuLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.line },
+  detailsMenuText: { color: theme.paper, fontFamily: font.medium, fontSize: 15 },
   dock: {
     position: 'absolute',
     left: 0,

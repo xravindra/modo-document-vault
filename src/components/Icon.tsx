@@ -35,7 +35,8 @@ export type IconName =
   | 'key'
   | 'close'
   | 'check'
-  | 'list';
+  | 'list'
+  | 'menu';
 
 export function Icon({
   name,
@@ -292,6 +293,8 @@ function glyph(name: IconName, pen: Pen, color: string, filled: boolean) {
       return <Path {...pen} d="M6.5 6.5l11 11M17.5 6.5l-11 11" />;
     case 'check':
       return <Path {...pen} d="M5 12.5l4.5 4.5L19 7.5" />;
+    case 'menu':
+      return <Path {...pen} d="M4.5 7H19.5M4.5 12H19.5M4.5 17H19.5" />;
     case 'list':
       return (
         <>
